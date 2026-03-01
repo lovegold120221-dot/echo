@@ -674,6 +674,11 @@ export default function Dashboard() {
   const [agentSkillsPrompt, setAgentSkillsPrompt] = useState(DEFAULT_AGENT_SKILLS);
   const [agentKnowledgeFiles, setAgentKnowledgeFiles] = useState<{ id: string; name: string }[]>([]);
   const [isUploadingKnowledge, setIsUploadingKnowledge] = useState(false);
+  const [isAgentVoiceRecording, setIsAgentVoiceRecording] = useState(false);
+  const [isAgentVoiceProcessing, setIsAgentVoiceProcessing] = useState(false);
+  const [agentVoiceStatus, setAgentVoiceStatus] = useState("");
+  const agentVoiceMediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const agentVoiceChunksRef = useRef<Blob[]>([]);
   const [dialerNumber, setDialerNumber] = useState("");
   const [phonebookEntries, setPhonebookEntries] = useState<{ name: string; number: string }[]>([]);
   const [selectedDialerAgentId, setSelectedDialerAgentId] = useState("");
@@ -937,6 +942,74 @@ export default function Dashboard() {
   const removeKnowledgeFile = useCallback((id: string) => {
     setAgentKnowledgeFiles((prev) => prev.filter((f) => f.id !== id));
   }, []);
+
+  const handleAgentVoiceCreate = useCallback(async () => {
+    if (isAgentVoiceRecording) {
+      const recorder = agentVoiceMediaRecorderRef.current;
+      if (recorder?.state === "recording") {
+        recorder.stop();
+      }
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      agentVoiceChunksRef.current = [];
+      const recorder = new MediaRecorder(stream);
+      agentVoiceMediaRecorderRef.current = recorder;
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) agentVoiceChunksRef.current.push(e.data);
+      };
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const chunks = agentVoiceChunksRef.current;
+        if (chunks.length === 0) {
+          setAgentVoiceStatus("No audio recorded. Try again.");
+          setIsAgentVoiceProcessing(false);
+          setIsAgentVoiceRecording(false);
+          return;
+        }
+        const blob = new Blob(chunks, { type: "audio/webm" });
+        const file = new File([blob], "voice.webm", { type: "audio/webm" });
+        setIsAgentVoiceProcessing(true);
+        setAgentVoiceStatus("Transcribing...");
+        try {
+          const fd = new FormData();
+          fd.append("file", file);
+          const sttRes = await fetch("/api/echo/stt", { method: "POST", body: fd });
+          const sttData = await sttRes.json();
+          const transcript = (typeof sttData?.text === "string" ? sttData.text : "").trim();
+          if (!transcript) {
+            setAgentVoiceStatus("Could not transcribe. Speak clearly and try again.");
+            return;
+          }
+          setAgentVoiceStatus("Creating agent template...");
+          const agentRes = await fetch("/api/agent-from-voice", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ transcript }),
+          });
+          const agentData = await agentRes.json();
+          if (!agentRes.ok) throw new Error(agentData?.error || "Failed to create template");
+          setNewAgentName(agentData.name || DEFAULT_AGENT_NAME);
+          setAgentIntroSpiel(agentData.firstMessage || DEFAULT_AGENT_INTRO);
+          setAgentSkillsPrompt(agentData.systemPrompt || DEFAULT_AGENT_SKILLS);
+          setAgentVoiceStatus("Done! Edit details below and click Use this agent.");
+          setAgentStatus("Template filled from your voice. Review and adjust as needed.");
+        } catch (err) {
+          setAgentVoiceStatus("Error: " + (err instanceof Error ? err.message : "Failed"));
+        } finally {
+          setIsAgentVoiceProcessing(false);
+          setIsAgentVoiceRecording(false);
+        }
+      };
+      recorder.start();
+      setIsAgentVoiceRecording(true);
+      setAgentVoiceStatus("Recording... Speak what you want your agent to do.");
+    } catch (err) {
+      setAgentVoiceStatus("Error: " + (err instanceof Error ? err.message : "Microphone access denied"));
+      setIsAgentVoiceRecording(false);
+    }
+  }, [isAgentVoiceRecording]);
 
   const handleCreateMyAgent = async () => {
     if (!newAgentName.trim()) {
@@ -1507,18 +1580,39 @@ export default function Dashboard() {
 
           {activeTab === "pane-agents" && (
             <div className="tab-pane active">
-              <div className="flex justify-between items-center mb-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                 <label className="block">Agents</label>
-                <button
-                  type="button"
-                  className="btn icon-only"
-                  onClick={fetchAgentBases}
-                  disabled={isFetchingBases}
-                  title="Refresh agents"
-                >
-                  {isFetchingBases ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-                </button>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    className={`btn flex items-center gap-2 ${isAgentVoiceRecording ? "primary" : ""}`}
+                    onClick={handleAgentVoiceCreate}
+                    disabled={isAgentVoiceProcessing}
+                    title={isAgentVoiceRecording ? "Click to stop and create template" : "Press mic, describe your agent, we'll auto-fill the form"}
+                  >
+                    {isAgentVoiceProcessing ? (
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : (
+                      <Mic size={16} />
+                    )}
+                    {isAgentVoiceRecording ? "Stop & create" : "Voice: describe your agent"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn icon-only"
+                    onClick={fetchAgentBases}
+                    disabled={isFetchingBases}
+                    title="Refresh agents"
+                  >
+                    {isFetchingBases ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+                  </button>
+                </div>
               </div>
+              {agentVoiceStatus && (
+                <div className="mb-4 p-3 rounded-lg border border-white/10 bg-white/5 text-2xs text-muted">
+                  {agentVoiceStatus}
+                </div>
+              )}
 
               {/* Phone call / Web call header */}
               <div className="flex gap-3 mb-6">
