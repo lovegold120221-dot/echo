@@ -3424,10 +3424,13 @@ body.light-mode .vl-search-row svg {
 .docs-doc-content {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   max-width: 900px;
   min-width: 0;
   min-height: 0;
   padding: 0 4px 48px 0;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
 }
 .docs-api-wrapper {
   display: flex;
@@ -3507,9 +3510,12 @@ body.light-mode .vl-search-row svg {
 }
 .docs-sidebar {
   overflow-y: auto;
+  overflow-x: hidden;
   padding-right: 8px;
   min-height: 0;
   min-width: 0;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
 }
 .docs-sidebar-group {
   margin-bottom: 24px;
@@ -3590,10 +3596,13 @@ body.light-mode .vl-search-row svg {
 }
 .docs-api-main {
   overflow-y: auto;
+  overflow-x: hidden;
   min-width: 0;
   min-height: 0;
   padding-right: 4px;
   padding-bottom: 48px;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
 }
 .docs-scroll-smooth {
   scroll-behavior: smooth;

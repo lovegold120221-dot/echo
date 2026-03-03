@@ -318,7 +318,8 @@ export default function DocsPane({
       </nav>
 
       {docTab === "documentation" && (
-        <div className="docs-content max-w-5xl mx-auto py-12 px-6 el-agents-landing">
+        <div className="docs-doc-content docs-scroll-smooth">
+          <div className="docs-content max-w-5xl mx-auto py-12 px-6 el-agents-landing">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm text-faint font-medium tracking-wide">Get started</span>
             <div className="hidden md:block text-sm text-faint">On this page</div>
@@ -461,6 +462,7 @@ export default function DocsPane({
                  <a href="#architecture" className="text-sm text-faint hover:text-white transition-colors pt-2 block border-l-transparent -ml-4 pl-4 border-l hover:border-white/20">Architecture</a>
                </div>
             </div>
+          </div>
           </div>
         </div>
       )}
