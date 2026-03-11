@@ -29,7 +29,7 @@ import {
 import OrbitCore from "@vapi-ai/web";
 import { Voice, UserTtsHistoryItem } from "@/lib/services/echo";
 import DocsPane from "@/components/DocsPane";
-import { enhanceTextForTTS, normalizeForTTS, BREAK_TAG } from "@/lib/tts-enhancer";
+import { enhanceTextForTTS, normalizeForTTS } from "@/lib/tts-enhancer";
 import { supabase } from "@/lib/supabase";
 import { User } from "@supabase/supabase-js";
 
@@ -1999,14 +1999,11 @@ export default function Dashboard() {
                         <button type="button" className="btn text-2xs text-lime border border-lime/50" onClick={() => setTtsText(normalizeForTTS(ttsText))} title="Normalize numbers, currency, phone, abbreviations for speech">
                           Normalize for TTS
                         </button>
-                        <button type="button" className="btn text-2xs" onClick={() => setTtsText(ttsText + (ttsText.endsWith(" ") ? "" : " ") + BREAK_TAG)} title="Append [pause]">
-                          Add pause
+                        <button type="button" className="btn text-2xs" onClick={handleEnhanced} disabled={isEnhancingExpression || !ttsText.trim()} title="Enhance flow and nuances (no tags)">
+                          {isEnhancingExpression ? <Loader2 size={16} className="animate-spin" /> : "Enhance flow"}
                         </button>
-                        <button type="button" className="btn text-2xs" onClick={handleEnhanced} disabled={isEnhancingExpression || !ttsText.trim()} title="Add nuances for natural speech (no brackets)">
-                          {isEnhancingExpression ? <Loader2 size={16} className="animate-spin" /> : "Enhanced"}
-                        </button>
-                        <button type="button" className="btn text-2xs text-lime border border-lime/50" onClick={handleAddExpression} disabled={isEnhancingExpression || !ttsText.trim()} title="Use AI to add expressive tags">
-                          Add expression
+                        <button type="button" className="btn text-2xs text-lime border border-lime/50" onClick={handleAddExpression} disabled={isEnhancingExpression || !ttsText.trim()} title="Use AI to add natural expressiveness (no tags)">
+                          Expressive
                         </button>
                       </div>
                     </div>
@@ -2424,10 +2421,10 @@ export default function Dashboard() {
                 <div className="Create-hero-label">Describe your agent</div>
                 <div className="Create-input-wrap">
                   <textarea
-                    placeholder="Describe what your agent should do..."
+                    placeholder="Describe what your agent should do... (e.g. 'A friendly support rep for a pizza shop')"
                     value={agentVoiceDescription}
                     onChange={(e) => setAgentVoiceDescription(e.target.value)}
-                    className="w-full min-h-[120px] px-4 py-3 rounded-xl border-0 bg-transparent text-sm resize-y focus:ring-0 focus:outline-none placeholder:text-faint"
+                    className="Create-textarea"
                     disabled={isAgentVoiceRecording}
                   />
                 </div>

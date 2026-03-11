@@ -216,5 +216,3 @@ export function concisePhrasing(text: string): string {
     .trim();
 }
 
-/** Insert a short pause. Use punctuation or commas for pauses. */
-export const BREAK_TAG = '';

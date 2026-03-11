@@ -32,6 +32,11 @@ You are Ivan, Client Care Consultant and Technical Team Lead for Eburon AI. You'
 - Use "kitchen table" language instead of jargon.
 - Always end with a human touch—especially if it's late, the weekend, or the user seems tired.
 
+[Anti-Patterns]
+- DO NOT use square brackets [], curly braces {}, or angle brackets <>.
+- DO NOT include auditory tags like [laughing], [sighs], or [pause].
+- Use natural word fillers instead: heh, uh, well, etc.
+
 [Task & Goals]
 1. Blind Entry - Greet the user, reveal you spotted their activity, but jokingly admit you only see a username. Ask "Who am I speaking with?" in a gentle way.
 2. Vibe Check - Once you have their name, use it naturally and reference the time or day if relevant. Ask one open question to check if now's good.
@@ -47,9 +52,8 @@ You are Ivan, Client Care Consultant and Technical Team Lead for Eburon AI. You'
 - If faced with anger or rudeness, stay calm, empathize, and exit kindly.`,
 };
 
-const OLLAMA_BASE = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'llama3.2';
-const OLLAMA_TIMEOUT_MS = Math.min(180000, Math.max(30000, (Number(process.env.OLLAMA_TIMEOUT_SECONDS) || 120) * 1000));
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const IVAN_ID = process.env.NEXT_PUBLIC_VAPI_ASSISTANT_IVAN_ID;
 
@@ -106,9 +110,38 @@ export async function POST(req: Request) {
     const userRequest = transcript.trim();
     const replacePrompt = buildReplacePrompt(ivan, userRequest);
 
-    let raw: string;
+    let raw: string = '';
 
-    const callOpenAI = async (prompt: string, isStream: boolean) => {
+    const callGemini = async (prompt: string) => {
+      const gUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+      const res = await fetch(gUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: prompt }],
+            },
+          ],
+          generationConfig: {
+            temperature: 0.2,
+            maxOutputTokens: 2048,
+          },
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.text();
+        console.error('[agent-from-voice] Gemini error:', res.status, err);
+        throw new Error(`Gemini failed: ${res.status}`);
+      }
+
+      const data = await res.json();
+      return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
+    };
+
+    const callOpenAI = async (prompt: string) => {
       const res = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -127,125 +160,30 @@ export async function POST(req: Request) {
       if (!res.ok) {
         const err = await res.text();
         console.error('[agent-from-voice] OpenAI error:', res.status, err);
-        return NextResponse.json({ error: 'AI request failed' }, { status: 502 });
+        throw new Error(`OpenAI failed: ${res.status}`);
       }
       const data = await res.json();
-      const rawRes = data.choices?.[0]?.message?.content?.trim() ?? '';
-      
-      // Parse JSON (strip markdown code blocks if present)
-      const cleaned = rawRes.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
-      const parsed = JSON.parse(cleaned) as { name?: string; firstMessage?: string; systemPrompt?: string };
-
-      const name = typeof parsed.name === 'string' ? parsed.name.trim() : 'My Agent';
-      const firstMessage = typeof parsed.firstMessage === 'string' ? parsed.firstMessage.trim() : 'Hi! How can I help you today?';
-      const agentSystemPrompt = typeof parsed.systemPrompt === 'string' ? parsed.systemPrompt.trim() : 'You are a helpful AI assistant.';
-
-      if (isStream) {
-        const encoder = new TextEncoder();
-        const streamBody = new ReadableStream({
-          start(controller) {
-            controller.enqueue(encoder.encode(JSON.stringify({ type: 'name', value: name }) + '\n'));
-            controller.enqueue(encoder.encode(JSON.stringify({ type: 'firstMessage', value: firstMessage }) + '\n'));
-            controller.enqueue(encoder.encode(JSON.stringify({ type: 'systemPrompt', value: agentSystemPrompt }) + '\n'));
-            controller.enqueue(encoder.encode(JSON.stringify({ type: 'done', name, firstMessage, systemPrompt: agentSystemPrompt }) + '\n'));
-            controller.close();
-          },
-        });
-        return new Response(streamBody, {
-          headers: { 'Content-Type': 'application/x-ndjson' },
-        });
-      }
-
-      return NextResponse.json({ name, firstMessage, systemPrompt: agentSystemPrompt });
+      return data.choices?.[0]?.message?.content?.trim() ?? '';
     };
 
-    if (OPENAI_API_KEY) {
-      return await callOpenAI(replacePrompt, stream);
-    } else {
-      const tryFetch = async (baseUrl: string) => {
-        const url = `${baseUrl.replace(/\/$/, '')}/api/chat`;
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), OLLAMA_TIMEOUT_MS);
-        try {
-          const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              model: OLLAMA_MODEL,
-              messages: [
-                { role: 'user', content: replacePrompt },
-              ],
-              stream: false,
-              options: { temperature: 0.2, num_predict: 2048 },
-            }),
-            signal: controller.signal,
-          });
-          clearTimeout(timeoutId);
-          return res;
-        } catch (err) {
-          clearTimeout(timeoutId);
-          throw err;
-        }
-      };
-
-      let res: Response;
+    // PRIMARY: Gemini
+    if (GEMINI_API_KEY) {
       try {
-        res = await tryFetch(OLLAMA_BASE);
-      } catch (fetchErr) {
-        const isAbort = fetchErr instanceof Error && fetchErr.name === 'AbortError';
-        // If remote failed and it's not localhost, try localhost as fallback
-        if (OLLAMA_BASE.includes('168.231.78.113') || (!OLLAMA_BASE.includes('localhost') && !OLLAMA_BASE.includes('127.0.0.1'))) {
-          try {
-            console.log(`[agent-from-voice] Remote Ollama (${OLLAMA_BASE}) unreachable, trying localhost fallback...`);
-            res = await tryFetch('http://localhost:11434');
-          } catch (localErr) {
-            console.error(`[agent-from-voice] Local Ollama fallback also failed:`, localErr);
-            
-            // SECONDARY FALLBACK: Try OpenAI if available
-            if (process.env.OPENAI_API_KEY) {
-              console.log(`[agent-from-voice] All Ollama options failed, falling back to OpenAI...`);
-              return await callOpenAI(replacePrompt, stream);
-            }
-
-            if (isAbort) {
-              return NextResponse.json(
-                { error: `Ollama timed out after ${OLLAMA_TIMEOUT_MS / 1000}s. Try increasing OLLAMA_TIMEOUT_SECONDS in .env, or use a smaller/faster model.` },
-                { status: 502 }
-              );
-            }
-            return NextResponse.json(
-              { error: `Cannot reach Ollama at ${OLLAMA_BASE} or localhost. Check network/firewall and that Ollama is running.` },
-              { status: 502 }
-            );
-          }
+        raw = await callGemini(replacePrompt);
+      } catch (geminiErr) {
+        console.warn('[agent-from-voice] Gemini failed, attempting OpenAI fallback...', geminiErr);
+        if (OPENAI_API_KEY) {
+          raw = await callOpenAI(replacePrompt);
         } else {
-          // If already localhost and fails, try OpenAI
-          if (process.env.OPENAI_API_KEY) {
-            console.log(`[agent-from-voice] Local Ollama failed, falling back to OpenAI...`);
-            return await callOpenAI(replacePrompt, stream);
-          }
-          if (isAbort) {
-            return NextResponse.json(
-              { error: `Ollama timed out after ${OLLAMA_TIMEOUT_MS / 1000}s. Try increasing OLLAMA_TIMEOUT_SECONDS in .env, or use a smaller/faster model.` },
-              { status: 502 }
-            );
-          }
-          return NextResponse.json(
-            { error: `Cannot reach Ollama at ${OLLAMA_BASE}. Check network/firewall and that Ollama is running.` },
-            { status: 502 }
-          );
+          throw geminiErr;
         }
       }
-      if (!res.ok) {
-        const err = await res.text();
-        console.error('[agent-from-voice] Ollama error:', res.status, err);
-        return NextResponse.json(
-          { error: `Ollama error. Use same OLLAMA_BASE_URL and OLLAMA_MODEL as TTS enhancer.` },
-          { status: 502 }
-        );
-      }
-      const data = await res.json();
-      raw = data.message?.content?.trim() ?? '';
+    }
+    // SECONDARY: OpenAI
+    else if (OPENAI_API_KEY) {
+      raw = await callOpenAI(replacePrompt);
+    } else {
+      return NextResponse.json({ error: 'No LLM configuration found' }, { status: 500 });
     }
 
     // Parse JSON (strip markdown code blocks if present)
