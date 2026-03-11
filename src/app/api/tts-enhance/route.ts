@@ -42,40 +42,69 @@ export async function POST(req: Request) {
       const data = await res.json();
       enhanced = data.choices?.[0]?.message?.content?.trim() ?? text;
     } else {
-      const url = `${OLLAMA_BASE.replace(/\/$/, '')}/api/chat`;
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), OLLAMA_TIMEOUT_MS);
+      const tryFetch = async (baseUrl: string) => {
+        const url = `${baseUrl.replace(/\/$/, '')}/api/chat`;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), OLLAMA_TIMEOUT_MS);
+        try {
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: OLLAMA_MODEL,
+              messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: text },
+              ],
+              stream: false,
+              options: { temperature: 0.3, num_predict: 2048 },
+            }),
+            signal: controller.signal,
+          });
+          clearTimeout(timeoutId);
+          return res;
+        } catch (err) {
+          clearTimeout(timeoutId);
+          throw err;
+        }
+      };
+
       let res: Response;
       try {
-        res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: OLLAMA_MODEL,
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: text },
-            ],
-            stream: false,
-            options: { temperature: 0.3, num_predict: 2048 },
-          }),
-          signal: controller.signal,
-        });
+        res = await tryFetch(OLLAMA_BASE);
       } catch (fetchErr) {
-        clearTimeout(timeoutId);
         const isAbort = fetchErr instanceof Error && fetchErr.name === 'AbortError';
-        if (isAbort) {
+        // If remote failed and it's not localhost, try localhost as fallback
+        if (OLLAMA_BASE.includes('168.231.78.113') || (!OLLAMA_BASE.includes('localhost') && !OLLAMA_BASE.includes('127.0.0.1'))) {
+          try {
+            console.log(`[tts-enhance] Remote Ollama (${OLLAMA_BASE}) unreachable, trying localhost fallback...`);
+            res = await tryFetch('http://localhost:11434');
+          } catch (localErr) {
+            console.error(`[tts-enhance] Local Ollama fallback also failed:`, localErr);
+            if (isAbort) {
+              return NextResponse.json(
+                { error: `Ollama took too long (${OLLAMA_TIMEOUT_MS / 1000}s). Is the server at ${OLLAMA_BASE} (or localhost) running and is the model "${OLLAMA_MODEL}" pulled?` },
+                { status: 502 }
+              );
+            }
+            return NextResponse.json(
+              { error: `Cannot reach Ollama at ${OLLAMA_BASE} or localhost. Check network/firewall and that Ollama is running.` },
+              { status: 502 }
+            );
+          }
+        } else {
+          if (isAbort) {
+            return NextResponse.json(
+              { error: `Ollama took too long (${OLLAMA_TIMEOUT_MS / 1000}s). Is the server at ${OLLAMA_BASE} running and is the model "${OLLAMA_MODEL}" pulled?` },
+              { status: 502 }
+            );
+          }
           return NextResponse.json(
-            { error: `Ollama took too long (${OLLAMA_TIMEOUT_MS / 1000}s). Is the server at ${OLLAMA_BASE} running and is the model "${OLLAMA_MODEL}" pulled?` },
+            { error: `Cannot reach Eburon AI at ${OLLAMA_BASE}. Is the server running and reachable from this machine?` },
             { status: 502 }
           );
         }
-        return NextResponse.json(
-          { error: `Cannot reach Eburon AI at ${OLLAMA_BASE}. Is the server running and reachable from this machine?` },
-          { status: 502 }
-        );
       }
-      clearTimeout(timeoutId);
       if (!res.ok) {
         const err = await res.text();
         console.error('[tts-enhance] Eburon AI (Ollama) error:', res.status, err);

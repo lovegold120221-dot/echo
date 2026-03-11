@@ -1,5 +1,5 @@
 "use client";
-// cspell:ignore supabase SUPABASE Bicolano Bhojpuri
+// cspell:ignore supabase SUPABASE Bicolano Bhojpuri Hiligaynon Waray Limburgish Hokkien Busan Jeju Minh
 
 import { useState, useEffect, useRef, useMemo, useCallback, useId } from "react";
 import {
@@ -686,7 +686,6 @@ export default function Dashboard() {
     }
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handlePlayPreview = useCallback((url?: string) => {
     if (!url) return;
     if (currentAudio) {
