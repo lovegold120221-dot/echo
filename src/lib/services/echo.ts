@@ -3,6 +3,11 @@ import { resolveEchoAlias } from '@/lib/eburon-alias-router';
 import { MOCK_VOICE_VARIANTS } from './mock-voices';
 const PROVIDER_KEY = process.env.TTS_PROVIDER_KEY || process.env.ECHO_PROVIDER_KEY || process.env.ELEVENLABS_API_KEY;
 const PROVIDER_BASE_URL = process.env.ECHO_PROVIDER_BASE_URL || 'https://api.elevenlabs.io/v1';
+const DEFAULT_PROVIDER_VOICE_ID =
+  process.env.ELEVENLABS_DEFAULT_VOICE_ID ||
+  process.env.ECHO_DEFAULT_VOICE_ID ||
+  'EXAVITQu4vr4xnSDxMaL';
+const MOCK_VOICE_IDS = new Set(MOCK_VOICE_VARIANTS.map((voice) => voice.voice_id));
 
 function getProviderKey() {
   if (!PROVIDER_KEY) {
@@ -81,6 +86,13 @@ export async function fetchVoices(): Promise<Voice[]> {
   return [...providerVoices, ...MOCK_VOICE_VARIANTS];
 }
 
+function resolveProviderVoiceId(voiceId: string) {
+  if (MOCK_VOICE_IDS.has(voiceId) || /^variant-\d+$/i.test(voiceId)) {
+    return DEFAULT_PROVIDER_VOICE_ID;
+  }
+  return voiceId;
+}
+
 export async function generateTTS(voiceId: string, text: string, modelId: string, outputFormat: string) {
   // Resolve Eburon canonical alias → upstream provider model (vendor ID stays server-side only)
   const decision = resolveEchoAlias(modelId);
@@ -88,10 +100,11 @@ export async function generateTTS(voiceId: string, text: string, modelId: string
     throw new Error(decision.publicMessage ?? 'Unknown Model');
   }
   const providerModelId = decision.upstreamModelId;
+  const providerVoiceId = resolveProviderVoiceId(voiceId);
 
   console.log(`TTS Request: Voice=${voiceId}, CanonicalModel=${decision.canonicalId}, TextLength=${text.length}`);
 
-  const res = await echoProviderRequest(`/text-to-speech/${voiceId}?output_format=${outputFormat}`, {
+  const res = await echoProviderRequest(`/text-to-speech/${providerVoiceId}?output_format=${outputFormat}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text, model_id: providerModelId }),

@@ -53,7 +53,6 @@ export async function POST(req: Request) {
         ...(voice && { voice: buildAssistantVoiceConfig(voice) }),
         ...(body.language !== undefined && {
           transcriber: buildAssistantTranscriberConfig(body.language),
-          transcriptionEnabled: true,
         }),
       });
       return NextResponse.json(result);

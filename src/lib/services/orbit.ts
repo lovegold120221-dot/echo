@@ -9,8 +9,6 @@ function getOrbitSecret() {
   return SECRET.trim();
 }
 
-import { sendSmsTool } from '../tools/twilio-sms';
-
 export async function orbitCoreRequest(method: string, endpoint: string, payload: unknown = null) {
   const orbitSecret = getOrbitSecret();
   if (!orbitSecret) {
@@ -245,7 +243,6 @@ export async function updateAssistant(id: string, payload: Partial<{
   model: AssistantModelConfig;
   voice: AssistantVoiceConfig;
   transcriber: AssistantTranscriberConfig;
-  transcriptionEnabled: boolean;
   clientMessages: string[];
   serverMessages: string[];
 }>) {
@@ -360,12 +357,8 @@ export async function createAssistantFromScratch(params: {
     name,
     firstMessage: firstMessage || undefined,
     firstMessageMode: 'assistant-speaks-first' as const,
-    model: {
-      ...buildAssistantModelConfig(systemPrompt, toolIds),
-      tools: [sendSmsTool],
-    },
+    model: buildAssistantModelConfig(systemPrompt, toolIds),
     voice: buildAssistantVoiceConfig(voice),
-    transcriptionEnabled: true,
     transcriber: buildAssistantTranscriberConfig(language),
     ...buildWebCallAssistantConfig(),
   };
