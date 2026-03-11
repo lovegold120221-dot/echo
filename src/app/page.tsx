@@ -27,10 +27,11 @@ import {
 } from "lucide-react";
 
 import OrbitCore from "@vapi-ai/web";
-import { Voice } from "@/lib/services/echo";
+import { Voice, UserTtsHistoryItem } from "@/lib/services/echo";
 import DocsPane from "@/components/DocsPane";
 import { enhanceTextForTTS, normalizeForTTS, BREAK_TAG } from "@/lib/tts-enhancer";
 import { supabase } from "@/lib/supabase";
+import { User } from "@supabase/supabase-js";
 
 // type Voice moved to echo.ts
 
@@ -127,7 +128,7 @@ export default function Dashboard() {
   const voicePreviewAnimationRef = useRef<number | null>(null);
   const voicePreviewAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  const [user, setUser] = useState<unknown>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -136,7 +137,7 @@ export default function Dashboard() {
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isAuthProcessing, setIsAuthProcessing] = useState(false);
 
-  const [history, setHistory] = useState<unknown[]>([]);
+  const [history, setHistory] = useState<UserTtsHistoryItem[]>([]);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const historyAudioRef = useRef<HTMLAudioElement>(null);
@@ -2841,7 +2842,7 @@ export default function Dashboard() {
                   <span className="pane-meta">{displayAgents.length} agents</span>
                   <button
                     type="button"
-                    className="btn icon-only !w-8 !h-8"
+                    className="btn icon-only w-8! h-8!"
                     onClick={fetchAgentBases}
                     disabled={isFetchingBases}
                     title="Refresh templates"
