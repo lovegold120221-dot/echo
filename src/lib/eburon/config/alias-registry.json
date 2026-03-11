@@ -82,5 +82,19 @@
     "capabilities": ["chat", "stream"],
     "defaultParams": { "temperature": 0.7, "top_p": 1, "max_output_tokens": 2048 },
     "status": "active"
+  },
+  {
+    "id": "llm/codemax_gemini-3.1-flash-lite-preview",
+    "capability": "llm",
+    "alias": "codemax",
+    "family": "gemini-3.1-flash-lite",
+    "version": "preview",
+    "upstream": {
+      "vendor": "GOOGLE",
+      "model": "gemini-3.1-flash-lite-preview"
+    },
+    "capabilities": ["chat", "stream", "tool_calls"],
+    "defaultParams": { "temperature": 0.2, "top_p": 1, "max_output_tokens": 4096 },
+    "status": "active"
   }
 ]

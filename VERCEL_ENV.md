@@ -36,7 +36,8 @@ Copy these **exact** variable names into your Vercel project (Settings → Envir
 | `OLLAMA_BASE_URL` | Ollama server URL (e.g. `http://localhost:11434`) |
 | `OLLAMA_MODEL` | Ollama model name |
 | `OLLAMA_TIMEOUT_SECONDS` | Timeout for Ollama requests |
-| `OPENAI_API_KEY` | If set, uses GPT-4o-mini instead of Ollama |
+| `GEMINI_API_KEY` | **Primary LLM** (Gemini 1.5 Flash) |
+| `OPENAI_API_KEY` | Secondary fallback if Gemini is missing/fails |
 
 ## Optional (agents)
 
@@ -70,4 +71,5 @@ PHONE_NUMBER_ID
 NEXT_PUBLIC_VAPI_ASSISTANT_IVAN_ID
 ELEVENLABS_API_KEY
 ECHO_PROVIDER_KEY
+GEMINI_API_KEY
 ```
