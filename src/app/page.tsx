@@ -576,15 +576,18 @@ export default function Dashboard() {
       authedFetch("/api/echo/voices").then(r => r.json()).catch(() => []),
     ]);
 
-    const mergedVoices = [...(Array.isArray(vapiVoices) ? vapiVoices : []), ...(Array.isArray(echoVoices) ? echoVoices : [])];
+    const vapiWithProvider = (Array.isArray(vapiVoices) ? vapiVoices : []).map((v) => ({ ...v, provider: (v as Record<string, unknown>).provider || 'vapi' }));
+    const echoWithProvider = (Array.isArray(echoVoices) ? echoVoices : []).map((v) => ({ ...v, provider: '11labs' }));
+    const mergedVoices = [...vapiWithProvider, ...echoWithProvider];
     const seen = new Set<string>();
-    const uniqueVoices = mergedVoices.filter((v: { voice_id?: string }) => {
-      if (!v.voice_id || seen.has(v.voice_id)) return false;
-      seen.add(v.voice_id);
+    const uniqueVoices = mergedVoices.filter((v) => {
+      const voiceId = (v as Voice).voice_id;
+      if (!voiceId || seen.has(voiceId)) return false;
+      seen.add(voiceId);
       return true;
     });
-    setVoices(uniqueVoices);
-    if (uniqueVoices.length > 0 && !selectedVoice) setSelectedVoice(uniqueVoices[0].voice_id);
+    setVoices(uniqueVoices as unknown as Voice[]);
+    if (uniqueVoices.length > 0 && !selectedVoice) setSelectedVoice((uniqueVoices[0] as Voice).voice_id);
 
     try {
       const res = await authedFetch("/api/echo/models");
@@ -1497,7 +1500,7 @@ export default function Dashboard() {
       setAgentVoiceStatus("Error: " + (err instanceof Error ? err.message : "Microphone access denied"));
       setIsAgentVoiceRecording(false);
     }
-  }, [isAgentVoiceRecording, stopAgentVoiceRecording]);
+  }, [isAgentVoiceRecording, stopAgentVoiceRecording, selectedVoice, voices]);
 
   const streamAgentTemplateFromPrompt = useCallback(async (prompt: string) => {
     const agentRes = await fetch("/api/agent-builder?stream=1", {
@@ -1530,7 +1533,9 @@ export default function Dashboard() {
             if (chunk.name) setNewAgentName(chunk.name);
             if (chunk.firstMessage) setAgentIntroSpiel(chunk.firstMessage);
             if (chunk.systemPrompt) setAgentSkillsPrompt(chunk.systemPrompt);
-            setAgentVoice("vapi:Elliot");
+            const selectedVoiceObj = voices.find(v => v.voice_id === selectedVoice);
+            const provider = (selectedVoiceObj as Record<string, unknown>)?.provider as string || '11labs';
+            setAgentVoice(`${provider}:${selectedVoice}`);
           }
         } catch {
           /* skip invalid lines */
