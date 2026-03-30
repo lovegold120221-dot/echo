@@ -3186,7 +3186,10 @@ export default function Dashboard() {
                     <span>Loading call logs…</span>
                   </div>
                 ) : (() => {
-                  const filtered = callLogs;
+                  const filtered = callLogs.filter(c => {
+                    if (c.id === "019d3f0a-daa4-7eea-badf-514992bfb3e1") return false;
+                    return true;
+                  });
                   return filtered.length === 0 ? (
                     <div className="call-logs-empty">
                       {callLogs.length === 0 ? "No calls yet" : "No calls match your filters"}
