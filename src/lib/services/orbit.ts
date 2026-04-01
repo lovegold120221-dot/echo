@@ -276,6 +276,7 @@ export async function fetchAssistantById(id: string) {
 export async function updateAssistant(id: string, payload: Partial<{
   name: string;
   firstMessage: string;
+  firstMessageMode: string;
   model: AssistantModelConfig;
   voice: AssistantVoiceConfig;
   transcriber: AssistantTranscriberConfig;
