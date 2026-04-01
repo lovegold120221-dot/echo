@@ -21,6 +21,15 @@ function buildSystemPrompt(base: string, hasKnowledgeBase: boolean): string {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+    console.log('[orbit/agents] Request body:', {
+      assistantId: body.assistantId,
+      name: body.name,
+      hasSystemPrompt: !!body.systemPrompt,
+      hasFirstMessage: !!body.firstMessage,
+      language: body.language,
+      voice: body.voice
+    });
+
     const fileIds = Array.isArray(body.fileIds) ? body.fileIds.filter((id: unknown) => typeof id === 'string') : [];
     let toolIds: string[] = [];
 
@@ -39,7 +48,7 @@ export async function POST(req: Request) {
     );
 
     // Update existing assistant when assistantId is provided
-    if (body.assistantId && body.name && (body.systemPrompt ?? body.firstMessage)) {
+    if (body.assistantId && body.name && (body.systemPrompt || body.firstMessage)) {
       const voice = body.voice
         ? { provider: body.voice.provider || '11labs', voiceId: body.voice.voiceId }
         : undefined;
@@ -58,7 +67,7 @@ export async function POST(req: Request) {
       return NextResponse.json(result);
     }
     // Create from scratch when assistantId is not provided
-    if (!body.assistantId && body.name && (body.systemPrompt ?? body.firstMessage)) {
+    if (!body.assistantId && body.name && (body.systemPrompt || body.firstMessage)) {
       const result = await createAssistantFromScratch({
         name: body.name,
         firstMessage: body.firstMessage || '',
@@ -66,14 +75,17 @@ export async function POST(req: Request) {
         language: body.language,
         voice: body.voice,
         toolIds: toolIds.length > 0 ? toolIds : undefined,
+        ...(body.phoneNumberId && { phoneNumberId: body.phoneNumberId }),
       });
       return NextResponse.json(result);
     }
     // Clone from existing assistant
+    console.log('[orbit/agents] Falling through to createAgent clone');
     const result = await createAgent(body);
     return NextResponse.json(result);
   } catch (error: unknown) {
     const raw = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[orbit/agents] Error:', raw, error);
     const { toEburonError, eburonJsonResponse } = await import('@/lib/eburon');
     const eburonErr = toEburonError(error);
     const isValidationError = typeof raw === 'string' && (

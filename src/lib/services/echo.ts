@@ -81,13 +81,17 @@ export async function fetchVoices(): Promise<Voice[]> {
   } catch (error) {
     console.warn('Failed to fetch provider voices, using mock only.', error);
   }
-  
+
   // Return merged voices, ensuring mock variants are included for "Explore"
   return [...providerVoices, ...MOCK_VOICE_VARIANTS];
 }
 
 function resolveProviderVoiceId(voiceId: string) {
   if (MOCK_VOICE_IDS.has(voiceId) || /^variant-\d+$/i.test(voiceId)) {
+    return DEFAULT_PROVIDER_VOICE_ID;
+  }
+  // If voiceId doesn't look like an ElevenLabs voice ID (alphanumeric, reasonable length), use default
+  if (!voiceId || voiceId.length < 10 || !/^[a-zA-Z0-9]+$/.test(voiceId)) {
     return DEFAULT_PROVIDER_VOICE_ID;
   }
   return voiceId;
@@ -102,7 +106,7 @@ export async function generateTTS(voiceId: string, text: string, modelId: string
   const providerModelId = decision.upstreamModelId;
   const providerVoiceId = resolveProviderVoiceId(voiceId);
 
-  console.log(`TTS Request: Voice=${voiceId}, CanonicalModel=${decision.canonicalId}, TextLength=${text.length}`);
+  console.log(`TTS Request: Voice=${voiceId}, ResolvedVoice=${providerVoiceId}, CanonicalModel=${decision.canonicalId}, TextLength=${text.length}`);
 
   const res = await echoProviderRequest(`/text-to-speech/${providerVoiceId}?output_format=${outputFormat}`, {
     method: 'POST',

@@ -191,7 +191,6 @@ r = requests.post("${base}/orbit/call", headers={
   },
 ] as const;
 
-const CATEGORIES = [...new Set(ENDPOINTS.map((e) => e.category))];
 
 export default function DocsPane({
   apiBaseUrl,

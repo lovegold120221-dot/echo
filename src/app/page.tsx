@@ -26,7 +26,8 @@ import {
   Minimize2,
   Pencil,
   Trash2,
-  Zap
+  Zap,
+  Plus
 } from "lucide-react";
 
 import OrbitCore from "@vapi-ai/web";
@@ -269,7 +270,7 @@ export default function Dashboard() {
     if (!historyAudioUrl || !playingHistoryId || !historyAudioRef.current) return;
     const el = historyAudioRef.current;
     el.pause();
-    el.play().catch(() => {});
+    el.play().catch(() => { });
   }, [historyAudioUrl, playingHistoryId]);
 
   const stopWebCallRing = useCallback(() => {
@@ -570,8 +571,6 @@ export default function Dashboard() {
     { id: "pane-settings", label: "Settings", icon: <SettingsIcon size={18} />, desc: "Configure default voice models and format" },
   ];
 
-  const userId = user?.id ?? null;
-
   const loadVoicesAndModels = useCallback(async () => {
     // Only fetch VAPI voices
     const vapiVoices = await authedFetch("/api/orbit/voices").then(r => r.json()).catch(() => []);
@@ -581,7 +580,7 @@ export default function Dashboard() {
       ...v,
       provider: undefined // Remove provider branding
     }));
-    
+
     setVoices(cleanedVoices as unknown as Voice[]);
     if (cleanedVoices.length > 0 && !selectedVoice) setSelectedVoice((cleanedVoices[0] as Voice).voice_id);
 
@@ -985,6 +984,11 @@ export default function Dashboard() {
   const [selectedDialerAgentId, setSelectedDialerAgentId] = useState<string>(DEFAULT_SAMPLE_AGENT.id);
   const [dialerCallStatus, setDialerCallStatus] = useState("");
   const [isDialerCalling, setIsDialerCalling] = useState(false);
+  const [dialerSubTab, setDialerSubTab] = useState<"phonebook" | "bulk-dial">("phonebook");
+  const [isBulkDialing, setIsBulkDialing] = useState(false);
+  const [bulkDialProgress, setBulkDialProgress] = useState<{ current: number; total: number; status: string }>({ current: 0, total: 0, status: "" });
+  const [bulkDialResults, setBulkDialResults] = useState<{ name: string; number: string; status: string }[]>([]);
+  const bulkDialAbortRef = useRef(false);
   const [callLogs, setCallLogs] = useState<{ id: string; type?: string; status?: string; customer?: { number?: string }; assistantId?: string; createdAt?: string; endedAt?: string }[]>([]);
   const [isCallLogsLoading, setIsCallLogsLoading] = useState(false);
   const [playingCallLogId, setPlayingCallLogId] = useState<string | null>(null);
@@ -1029,7 +1033,7 @@ export default function Dashboard() {
   useEffect(() => {
     if (callLogRecordingUrl && callLogAudioRef.current) {
       callLogAudioRef.current.src = callLogRecordingUrl;
-      callLogAudioRef.current.play().catch(() => {});
+      callLogAudioRef.current.play().catch(() => { });
     }
   }, [callLogRecordingUrl]);
 
@@ -1512,7 +1516,7 @@ export default function Dashboard() {
       setAgentVoiceStatus("Error: " + (err instanceof Error ? err.message : "Microphone access denied"));
       setIsAgentVoiceRecording(false);
     }
-  }, [isAgentVoiceRecording, stopAgentVoiceRecording, selectedVoice, voices]);
+  }, [isAgentVoiceRecording, stopAgentVoiceRecording]);
 
   const streamAgentTemplateFromPrompt = useCallback(async (prompt: string) => {
     const agentRes = await fetch("/api/agent-builder?stream=1", {
@@ -1545,7 +1549,6 @@ export default function Dashboard() {
             if (chunk.name) setNewAgentName(chunk.name);
             if (chunk.firstMessage) setAgentIntroSpiel(chunk.firstMessage);
             if (chunk.systemPrompt) setAgentSkillsPrompt(chunk.systemPrompt);
-            const selectedVoiceObj = voices.find(v => v.voice_id === selectedVoice);
             setAgentVoice(`vapi:${selectedVoice}`);
           }
         } catch {
@@ -1553,7 +1556,7 @@ export default function Dashboard() {
         }
       }
     }
-  }, []);
+  }, [selectedVoice]);
 
   const handleAgentVoiceGenerate = useCallback(async () => {
     const text = agentVoiceDescription.trim();
@@ -1886,7 +1889,7 @@ export default function Dashboard() {
 
           {/* User Profile Area */}
           <div className="sidebar-profile">
-            <div 
+            <div
               className="profile-info cursor-pointer hover:bg-gray-800 rounded-lg p-2 transition-colors"
               onClick={() => setShowUserProfile(!showUserProfile)}
             >
@@ -1901,14 +1904,14 @@ export default function Dashboard() {
                 ▼
               </div>
             </div>
-            
+
             {showUserProfile && (
               <div className="profile-dropdown bg-gray-800 rounded-lg p-2 mt-2 border border-gray-700">
                 <div className="profile-item text-sm text-gray-300 px-2 py-1">
                   {user.email}
                 </div>
                 <div className="profile-separator border-t border-gray-700 my-1"></div>
-                <button 
+                <button
                   onClick={handleLogout}
                   className="profile-logout text-sm text-red-400 hover:text-red-300 px-2 py-1 rounded hover:bg-gray-700 transition-colors w-full text-left"
                 >
@@ -1977,16 +1980,16 @@ export default function Dashboard() {
                 const useCaseSet = new Set<string>();
                 voices.forEach(v => { if (v.labels?.use_case) useCaseSet.add(v.labels.use_case); });
                 const styles = [
-                  "Action Hero", "Adventure", "Animation", "Architecture", "Audiobook", 
-                  "Children's Stories", "Cinema", "Conversational", "Cooking", "Corporate", 
-                  "Customer Support", "Design", "Documentary", "E-commerce", "E-learning", 
-                  "Education", "Engineering", "Financial", "Folk Stories", "Gaming", 
-                  "Government", "Healthcare", "History", "IT Services", "Inspiration", 
-                  "K-Pop News", "Literature", "Local News", "Luxury", "Meditation", 
-                  "Military", "Mythology", "Narrative", "Nature", "News", "Outdoors", 
-                  "Poetry", "Politics", "Professional", "Radio", "Showbiz", "Social Media", 
-                  "Sports", "Tech Support", "Tourism", "Traditional", "Travel", "Urban", 
-                  "Vlog", "Weather", "Advertisement", "Characters Animation", "Conversational", 
+                  "Action Hero", "Adventure", "Animation", "Architecture", "Audiobook",
+                  "Children's Stories", "Cinema", "Conversational", "Cooking", "Corporate",
+                  "Customer Support", "Design", "Documentary", "E-commerce", "E-learning",
+                  "Education", "Engineering", "Financial", "Folk Stories", "Gaming",
+                  "Government", "Healthcare", "History", "IT Services", "Inspiration",
+                  "K-Pop News", "Literature", "Local News", "Luxury", "Meditation",
+                  "Military", "Mythology", "Narrative", "Nature", "News", "Outdoors",
+                  "Poetry", "Politics", "Professional", "Radio", "Showbiz", "Social Media",
+                  "Sports", "Tech Support", "Tourism", "Traditional", "Travel", "Urban",
+                  "Vlog", "Weather", "Advertisement", "Characters Animation", "Conversational",
                   "Entertainment TV", "Informative Educational", "Narrative Story", "Social Media"
                 ];
                 styles.forEach(s => useCaseSet.add(s));
@@ -2047,136 +2050,136 @@ export default function Dashboard() {
                 };
 
                 return (
-                <div className="tab-pane active vl-root">
-                  {/* Inner sub-tabs */}
-                  <div className="vl-tabs-row">
-                    <div className="vl-tabs">
-                      {voiceViewTabs.map(t => (
-                        <button key={t} type="button" className={`vl-tab ${activeView === t ? "active" : ""}`} onClick={() => { setVoiceFilterCategory(t === "explore" ? "all" : t); }}>
-                          {t === "explore" && <AudioWaveform size={14} />}
-                          {voiceViewLabels[t]}
+                  <div className="tab-pane active vl-root">
+                    {/* Inner sub-tabs */}
+                    <div className="vl-tabs-row">
+                      <div className="vl-tabs">
+                        {voiceViewTabs.map(t => (
+                          <button key={t} type="button" className={`vl-tab ${activeView === t ? "active" : ""}`} onClick={() => { setVoiceFilterCategory(t === "explore" ? "all" : t); }}>
+                            {t === "explore" && <AudioWaveform size={14} />}
+                            {voiceViewLabels[t]}
+                          </button>
+                        ))}
+                      </div>
+                      <span className="pane-meta">{filtered.length} voices</span>
+                    </div>
+
+                    {/* Search */}
+                    <div className="vl-search-row">
+                      <input
+                        type="text"
+                        className="vl-search"
+                        placeholder="Search library voices…"
+                        value={voiceSearchQuery}
+                        onChange={e => setVoiceSearchQuery(e.target.value)}
+                        title="Search"
+                      />
+                    </div>
+
+                    {/* Filters row with dropdowns */}
+                    <div className="vl-filters-row">
+                      <div className="vl-filter-group">
+                        <div className="vl-filter-label">🌐 Language</div>
+                        <select
+                          className="vl-select"
+                          value={activeLanguageFilter || "all"}
+                          onChange={e => setVoiceFilterLanguage(e.target.value)}
+                          title="Select Language"
+                        >
+                          <option value="all">All Languages</option>
+                          {allLanguages.map(l => <option key={l} value={l}>{l}</option>)}
+                        </select>
+                      </div>
+
+                      <div className="vl-filter-group">
+                        <div className="vl-filter-label">🎯 Style</div>
+                        <select
+                          className="vl-select"
+                          value={activeUseCase || "all"}
+                          onChange={e => setVoiceFilterLanguage(e.target.value)}
+                          title="Select Style"
+                        >
+                          <option value="all">All Styles</option>
+                          {useCaseChips.map(uc => <option key={uc} value={uc}>{uc}</option>)}
+                        </select>
+                      </div>
+
+                      {(activeUseCase || activeLanguageFilter || voiceSearchQuery) && (
+                        <button type="button" className="vl-filter-clear" onClick={() => { setVoiceFilterLanguage("all"); setVoiceSearchQuery(""); }}>
+                          <X size={14} /> Clear
                         </button>
-                      ))}
-                    </div>
-                    <span className="pane-meta">{filtered.length} voices</span>
-                  </div>
-
-                  {/* Search */}
-                  <div className="vl-search-row">
-                    <input
-                      type="text"
-                      className="vl-search"
-                      placeholder="Search library voices…"
-                      value={voiceSearchQuery}
-                      onChange={e => setVoiceSearchQuery(e.target.value)}
-                      title="Search"
-                    />
-                  </div>
-
-                  {/* Filters row with dropdowns */}
-                  <div className="vl-filters-row">
-                    <div className="vl-filter-group">
-                      <div className="vl-filter-label">🌐 Language</div>
-                      <select 
-                        className="vl-select" 
-                        value={activeLanguageFilter || "all"} 
-                        onChange={e => setVoiceFilterLanguage(e.target.value)}
-                        title="Select Language"
-                      >
-                        <option value="all">All Languages</option>
-                        {allLanguages.map(l => <option key={l} value={l}>{l}</option>)}
-                      </select>
+                      )}
                     </div>
 
-                    <div className="vl-filter-group">
-                      <div className="vl-filter-label">🎯 Style</div>
-                      <select 
-                        className="vl-select" 
-                        value={activeUseCase || "all"} 
-                        onChange={e => setVoiceFilterLanguage(e.target.value)}
-                        title="Select Style"
-                      >
-                        <option value="all">All Styles</option>
-                        {useCaseChips.map(uc => <option key={uc} value={uc}>{uc}</option>)}
-                      </select>
-                    </div>
+                    {/* Audio visualizer */}
+                    {currentAudio && (
+                      <div className={`audio-visualizer audio-viz-${voicePreviewVizId.replace(/:/g, "")} mb-6`} aria-hidden>
+                        <style>{`
+                        ${Array.from({ length: 12 })
+                            .map((_, i) => `.audio-viz-${voicePreviewVizId.replace(/:/g, "")} .audio-bar:nth-child(${i + 2}) { --bar-height: ${8 + Math.min(92, voicePreviewVolume * (0.5 + 0.5 * Math.sin(i * 0.6)))}%; }`)
+                            .join("\n")}
+                      `}</style>
+                        {Array.from({ length: 12 }).map((_, i) => (
+                          <div key={i} className="audio-bar" />
+                        ))}
+                      </div>
+                    )}
 
-                    {(activeUseCase || activeLanguageFilter || voiceSearchQuery) && (
-                      <button type="button" className="vl-filter-clear" onClick={() => { setVoiceFilterLanguage("all"); setVoiceSearchQuery(""); }}>
-                        <X size={14} /> Clear
-                      </button>
+                    {/* Voice cards by category */}
+                    {voices.length === 0 ? (
+                      <div className="placeholder-pane h-32 voice-grid-placeholder">Loading voices…</div>
+                    ) : filtered.length === 0 ? (
+                      <div className="placeholder-pane h-32 voice-grid-placeholder">No voices match your filters.</div>
+                    ) : (
+                      sortedCats.map(cat => (
+                        <div key={cat} className="vl-section">
+                          <div className="vl-section-header">
+                            <span className="vl-section-title">{sectionTitle(cat)}</span>
+                            <span className="vl-section-count">{grouped[cat].length}</span>
+                          </div>
+                          <div className="vl-grid">
+                            {grouped[cat].map(v => (
+                              <div
+                                key={v.voice_id}
+                                className={`vl-card ${currentAudio && currentAudio.src === v.preview_url ? "playing" : ""}`}
+                                onClick={() => {
+                                  if (v.preview_url) handlePlayPreview(v.preview_url);
+                                }}
+                              >
+                                <div className="vl-card-avatar">
+                                  <Volume2
+                                    size={16}
+                                    className={currentAudio && currentAudio.src === v.preview_url ? "text-lime animate-pulse" : ""}
+                                  />
+                                </div>
+                                <div className="vl-card-info">
+                                  <div className="vl-card-name" title={v.name}>{v.name}</div>
+                                  <div className="vl-card-category">{v.labels?.use_case || v.category || "General"}</div>
+                                  <div className="vl-card-lang">
+                                    {v.labels?.language || v.labels?.accent || ""}
+                                    {v.labels?.accent && v.labels?.language ? ` · ${v.labels.accent}` : ""}
+                                  </div>
+                                </div>
+                                {v.preview_url && (
+                                  <button
+                                    type="button"
+                                    className="vl-card-play-btn"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handlePlayPreview(v.preview_url);
+                                    }}
+                                    title="Play Preview"
+                                  >
+                                    {currentAudio && currentAudio.src === v.preview_url ? <PhoneOff size={14} /> : <Play size={14} />}
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))
                     )}
                   </div>
-
-                  {/* Audio visualizer */}
-                  {currentAudio && (
-                    <div className={`audio-visualizer audio-viz-${voicePreviewVizId.replace(/:/g, "")} mb-6`} aria-hidden>
-                      <style>{`
-                        ${Array.from({ length: 12 })
-                          .map((_, i) => `.audio-viz-${voicePreviewVizId.replace(/:/g, "")} .audio-bar:nth-child(${i + 2}) { --bar-height: ${8 + Math.min(92, voicePreviewVolume * (0.5 + 0.5 * Math.sin(i * 0.6)))}%; }`)
-                          .join("\n")}
-                      `}</style>
-                      {Array.from({ length: 12 }).map((_, i) => (
-                        <div key={i} className="audio-bar" />
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Voice cards by category */}
-                  {voices.length === 0 ? (
-                    <div className="placeholder-pane h-32 voice-grid-placeholder">Loading voices…</div>
-                  ) : filtered.length === 0 ? (
-                    <div className="placeholder-pane h-32 voice-grid-placeholder">No voices match your filters.</div>
-                  ) : (
-                    sortedCats.map(cat => (
-                      <div key={cat} className="vl-section">
-                        <div className="vl-section-header">
-                          <span className="vl-section-title">{sectionTitle(cat)}</span>
-                          <span className="vl-section-count">{grouped[cat].length}</span>
-                        </div>
-                        <div className="vl-grid">
-                          {grouped[cat].map(v => (
-                            <div 
-                              key={v.voice_id} 
-                              className={`vl-card ${currentAudio && currentAudio.src === v.preview_url ? "playing" : ""}`}
-                              onClick={() => {
-                                if (v.preview_url) handlePlayPreview(v.preview_url);
-                              }}
-                            >
-                              <div className="vl-card-avatar">
-                                <Volume2 
-                                  size={16} 
-                                  className={currentAudio && currentAudio.src === v.preview_url ? "text-lime animate-pulse" : ""}
-                                />
-                              </div>
-                              <div className="vl-card-info">
-                                <div className="vl-card-name" title={v.name}>{v.name}</div>
-                                <div className="vl-card-category">{v.labels?.use_case || v.category || "General"}</div>
-                                <div className="vl-card-lang">
-                                  {v.labels?.language || v.labels?.accent || ""}
-                                  {v.labels?.accent && v.labels?.language ? ` · ${v.labels.accent}` : ""}
-                                </div>
-                              </div>
-                              {v.preview_url && (
-                                <button
-                                  type="button"
-                                  className="vl-card-play-btn"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handlePlayPreview(v.preview_url);
-                                  }}
-                                  title="Play Preview"
-                                >
-                                  {currentAudio && currentAudio.src === v.preview_url ? <PhoneOff size={14} /> : <Play size={14} />}
-                                </button>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
                 );
               })()}
               {audioSubTab === "tts" && (
@@ -2206,7 +2209,7 @@ export default function Dashboard() {
                       value={ttsText}
                       onChange={(e) => setTtsText(e.target.value)}
                     ></textarea>
-                    
+
                     {/* Bottom controls integrated into left pane footer */}
                     <div className="el-tts-footer">
                       <div className="el-tts-status">
@@ -2283,167 +2286,167 @@ export default function Dashboard() {
               )}
               {audioSubTab === "history" && (
                 <div className="tab-pane active tab-pane-full-height">
-              <div className="history-pane-inner">
-                <div className="flex justify-between items-center mb-4 shrink-0">
-                  <label className="block">TTS History</label>
-                  <button className="text-2xs text-lime bg-transparent hover:text-white" onClick={fetchRealTimeHistory}>Refresh</button>
-                </div>
-                {historyAudioUrl && (
-                  <div className="mb-4 p-4 rounded-xl border border-border bg-panel flex items-center gap-4 shrink-0">
-                    <audio
-                      ref={historyAudioRef}
-                      src={historyAudioUrl}
-                      controls
-                      className="flex-1 h-10"
-                      onEnded={() => { setTtsStatus(""); setPlayingHistoryId(null); }}
-                    />
-                  </div>
-                )}
-                <div className="history-list">
-                    {isHistoryLoading ? (
-                      <div className="placeholder-pane h-32 flex items-center justify-center"><Loader2 className="animate-spin" size={20} /></div>
-                    ) : historyError ? (
-                      <div className="placeholder-pane h-32 flex flex-col items-center justify-center gap-2 text-center">
-                        <span className="text-bad">{historyError}</span>
-                        <span className="text-2xs text-muted">{getHistoryErrorHint(historyError)}</span>
-                        <button className="btn text-2xs mt-2" onClick={fetchRealTimeHistory}>Retry</button>
+                  <div className="history-pane-inner">
+                    <div className="flex justify-between items-center mb-4 shrink-0">
+                      <label className="block">TTS History</label>
+                      <button className="text-2xs text-lime bg-transparent hover:text-white" onClick={fetchRealTimeHistory}>Refresh</button>
+                    </div>
+                    {historyAudioUrl && (
+                      <div className="mb-4 p-4 rounded-xl border border-border bg-panel flex items-center gap-4 shrink-0">
+                        <audio
+                          ref={historyAudioRef}
+                          src={historyAudioUrl}
+                          controls
+                          className="flex-1 h-10"
+                          onEnded={() => { setTtsStatus(""); setPlayingHistoryId(null); }}
+                        />
                       </div>
-                    ) : history.length === 0 ? (
-                      <div className="placeholder-pane h-32 flex items-center justify-center text-muted">No history yet</div>
-                    ) : (
-                      history.slice(0, 50).map((h) => (
-                        <div key={h.id} className="history-card">
-                          <button
-                            className={`history-play-btn ${playingHistoryId === h.id ? "playing" : ""} ${loadingHistoryId === h.id ? "loading" : ""}`}
-                            onClick={() => handlePlayHistory(h.id)}
-                            disabled={loadingHistoryId === h.id}
-                            title="Play"
-                            aria-label="Play"
-                          >
-                            {loadingHistoryId === h.id ? (
-                              <Loader2 size={20} className="animate-spin text-inherit" />
-                            ) : playingHistoryId === h.id ? (
-                              <Volume2 size={20} className="text-inherit" />
-                            ) : (
-                              <Play size={20} fill="currentColor" stroke="currentColor" className="history-play-icon" />
-                            )}
-                          </button>
-                          <div className="history-card-body">
-                            <div className="history-card-text" title={h.text}>{h.text}</div>
-                            <div className="history-card-meta">
-                              <span className="voice-pill">{h.voice_name}</span>
-                              <span className="history-card-date">{new Date(h.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
-                            </div>
-                          </div>
-                          <div className="history-card-actions">
+                    )}
+                    <div className="history-list">
+                      {isHistoryLoading ? (
+                        <div className="placeholder-pane h-32 flex items-center justify-center"><Loader2 className="animate-spin" size={20} /></div>
+                      ) : historyError ? (
+                        <div className="placeholder-pane h-32 flex flex-col items-center justify-center gap-2 text-center">
+                          <span className="text-bad">{historyError}</span>
+                          <span className="text-2xs text-muted">{getHistoryErrorHint(historyError)}</span>
+                          <button className="btn text-2xs mt-2" onClick={fetchRealTimeHistory}>Retry</button>
+                        </div>
+                      ) : history.length === 0 ? (
+                        <div className="placeholder-pane h-32 flex items-center justify-center text-muted">No history yet</div>
+                      ) : (
+                        history.slice(0, 50).map((h) => (
+                          <div key={h.id} className="history-card">
                             <button
-                              className="history-card-action"
-                              onClick={() => { setTtsText(h.text); setSelectedVoice(h.voice_id); setActiveTab("pane-audio"); setAudioSubTab("tts"); }}
-                              title="Re-synthesize"
+                              className={`history-play-btn ${playingHistoryId === h.id ? "playing" : ""} ${loadingHistoryId === h.id ? "loading" : ""}`}
+                              onClick={() => handlePlayHistory(h.id)}
+                              disabled={loadingHistoryId === h.id}
+                              title="Play"
+                              aria-label="Play"
                             >
-                              <AudioWaveform size={20} />
+                              {loadingHistoryId === h.id ? (
+                                <Loader2 size={20} className="animate-spin text-inherit" />
+                              ) : playingHistoryId === h.id ? (
+                                <Volume2 size={20} className="text-inherit" />
+                              ) : (
+                                <Play size={20} fill="currentColor" stroke="currentColor" className="history-play-icon" />
+                              )}
                             </button>
-                            <div className="relative" ref={downloadMenuId === h.id ? downloadMenuRef : undefined}>
+                            <div className="history-card-body">
+                              <div className="history-card-text" title={h.text}>{h.text}</div>
+                              <div className="history-card-meta">
+                                <span className="voice-pill">{h.voice_name}</span>
+                                <span className="history-card-date">{new Date(h.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                              </div>
+                            </div>
+                            <div className="history-card-actions">
                               <button
                                 className="history-card-action"
-                                onClick={(e) => { e.stopPropagation(); setDownloadMenuId(downloadMenuId === h.id ? null : h.id); }}
-                                title="Download"
+                                onClick={() => { setTtsText(h.text); setSelectedVoice(h.voice_id); setActiveTab("pane-audio"); setAudioSubTab("tts"); }}
+                                title="Re-synthesize"
                               >
-                                <Download size={20} />
+                                <AudioWaveform size={20} />
                               </button>
-                              {downloadMenuId === h.id && (
-                                <div className="absolute right-0 top-full mt-1 z-20 rounded-lg border border-border bg-panel py-1 min-w-[90px] shadow-xl">
-                                  <button className="block w-full text-left px-4 py-2 text-sm hover:bg-limeDim"
-                                    onClick={() => { handleDownloadHistory(h.id, h.text, "mp3"); setDownloadMenuId(null); }}>MP3</button>
-                                  <button className="block w-full text-left px-4 py-2 text-sm hover:bg-limeDim"
-                                    onClick={() => { handleDownloadHistory(h.id, h.text, "wav"); setDownloadMenuId(null); }}>WAV</button>
-                                </div>
-                              )}
+                              <div className="relative" ref={downloadMenuId === h.id ? downloadMenuRef : undefined}>
+                                <button
+                                  className="history-card-action"
+                                  onClick={(e) => { e.stopPropagation(); setDownloadMenuId(downloadMenuId === h.id ? null : h.id); }}
+                                  title="Download"
+                                >
+                                  <Download size={20} />
+                                </button>
+                                {downloadMenuId === h.id && (
+                                  <div className="absolute right-0 top-full mt-1 z-20 rounded-lg border border-border bg-panel py-1 min-w-[90px] shadow-xl">
+                                    <button className="block w-full text-left px-4 py-2 text-sm hover:bg-limeDim"
+                                      onClick={() => { handleDownloadHistory(h.id, h.text, "mp3"); setDownloadMenuId(null); }}>MP3</button>
+                                    <button className="block w-full text-left px-4 py-2 text-sm hover:bg-limeDim"
+                                      onClick={() => { handleDownloadHistory(h.id, h.text, "wav"); setDownloadMenuId(null); }}>WAV</button>
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))
-                    )}
+                        ))
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
               )}
               {audioSubTab === "stt" && (
                 <div className="tab-pane active">
-              <div className="field">
-                <label htmlFor="sttFile">Audio File</label>
-                <input
-                  type="file"
-                  id="sttFile"
-                  accept="audio/*"
-                  onChange={(e) => setSttFile(e.target.files?.[0] || null)}
-                />
-              </div>
-              <div className="flex gap-2.5 items-center mb-6">
-                <button
-                  className="btn primary"
-                  onClick={handleTranscribe}
-                  disabled={isTranscribing || !sttFile}
-                >
-                  {isTranscribing ? <Loader2 size={16} className="animate-spin" /> : <Mic size={16} />}
-                  Transcribe Audio
-                </button>
-                {(sttStatus.includes("Error") || sttStatus === "Failed") && (
-                  <span className="text-xs text-bad">{sttStatus}</span>
-                )}
-              </div>
-              <div className="field flex-1">
-                <label htmlFor="sttOutput">Transcription</label>
-                <textarea
-                  id="sttOutput"
-                  readOnly
-                  placeholder=""
-                  value={sttOutput}
-                ></textarea>
-              </div>
-              <div className="flex gap-2.5 items-center mt-3 flex-wrap">
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => {
-                    const transcript = sttOutput.trim();
-                    if (!transcript) return;
-                    setAgentVoiceDescription(transcript);
-                    setActiveTab("pane-Create");
-                    setAgentVoiceStatus("Transcript inserted into Describe your agent.");
-                  }}
-                  disabled={!sttOutput.trim()}
-                >
-                  <Mic size={16} />
-                  Use in Describe Agent
-                </button>
-                <button
-                  type="button"
-                  className="btn primary"
-                  onClick={async () => {
-                    const transcript = sttOutput.trim();
-                    if (!transcript) return;
-                    setAgentVoiceDescription(transcript);
-                    setActiveTab("pane-Create");
-                    setIsAgentVoiceGenerating(true);
-                    setAgentVoiceStatus("Generating template from STT transcript...");
-                    try {
-                      await streamAgentTemplateFromPrompt(transcript);
-                      setAgentVoiceStatus("Done! Template generated from STT transcript.");
-                      setAgentStatus("Template filled from STT transcript. Review and adjust as needed.");
-                      createFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-                    } catch (err) {
-                      setAgentVoiceStatus("Error: " + (err instanceof Error ? err.message : "Failed"));
-                    } finally {
-                      setIsAgentVoiceGenerating(false);
-                    }
-                  }}
-                  disabled={isAgentVoiceGenerating || !sttOutput.trim()}
-                >
-                  {isAgentVoiceGenerating ? <Loader2 size={16} className="animate-spin" /> : <Users size={16} />}
-                  Generate Agent Template
-                </button>
-              </div>
+                  <div className="field">
+                    <label htmlFor="sttFile">Audio File</label>
+                    <input
+                      type="file"
+                      id="sttFile"
+                      accept="audio/*"
+                      onChange={(e) => setSttFile(e.target.files?.[0] || null)}
+                    />
+                  </div>
+                  <div className="flex gap-2.5 items-center mb-6">
+                    <button
+                      className="btn primary"
+                      onClick={handleTranscribe}
+                      disabled={isTranscribing || !sttFile}
+                    >
+                      {isTranscribing ? <Loader2 size={16} className="animate-spin" /> : <Mic size={16} />}
+                      Transcribe Audio
+                    </button>
+                    {(sttStatus.includes("Error") || sttStatus === "Failed") && (
+                      <span className="text-xs text-bad">{sttStatus}</span>
+                    )}
+                  </div>
+                  <div className="field flex-1">
+                    <label htmlFor="sttOutput">Transcription</label>
+                    <textarea
+                      id="sttOutput"
+                      readOnly
+                      placeholder=""
+                      value={sttOutput}
+                    ></textarea>
+                  </div>
+                  <div className="flex gap-2.5 items-center mt-3 flex-wrap">
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => {
+                        const transcript = sttOutput.trim();
+                        if (!transcript) return;
+                        setAgentVoiceDescription(transcript);
+                        setActiveTab("pane-Create");
+                        setAgentVoiceStatus("Transcript inserted into Describe your agent.");
+                      }}
+                      disabled={!sttOutput.trim()}
+                    >
+                      <Mic size={16} />
+                      Use in Describe Agent
+                    </button>
+                    <button
+                      type="button"
+                      className="btn primary"
+                      onClick={async () => {
+                        const transcript = sttOutput.trim();
+                        if (!transcript) return;
+                        setAgentVoiceDescription(transcript);
+                        setActiveTab("pane-Create");
+                        setIsAgentVoiceGenerating(true);
+                        setAgentVoiceStatus("Generating template from STT transcript...");
+                        try {
+                          await streamAgentTemplateFromPrompt(transcript);
+                          setAgentVoiceStatus("Done! Template generated from STT transcript.");
+                          setAgentStatus("Template filled from STT transcript. Review and adjust as needed.");
+                          createFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                        } catch (err) {
+                          setAgentVoiceStatus("Error: " + (err instanceof Error ? err.message : "Failed"));
+                        } finally {
+                          setIsAgentVoiceGenerating(false);
+                        }
+                      }}
+                      disabled={isAgentVoiceGenerating || !sttOutput.trim()}
+                    >
+                      {isAgentVoiceGenerating ? <Loader2 size={16} className="animate-spin" /> : <Users size={16} />}
+                      Generate Agent Template
+                    </button>
+                  </div>
                 </div>
               )}
             </>
@@ -2538,8 +2541,8 @@ export default function Dashboard() {
               <div className="grid-2">
                 <div className="field">
                   <label htmlFor="cloneGender">Gender</label>
-                  <select 
-                    id="cloneGender" 
+                  <select
+                    id="cloneGender"
                     value={cloneGender}
                     onChange={(e) => setCloneGender(e.target.value)}
                   >
@@ -2550,8 +2553,8 @@ export default function Dashboard() {
                 </div>
                 <div className="field">
                   <label htmlFor="cloneAge">Age Group</label>
-                  <select 
-                    id="cloneAge" 
+                  <select
+                    id="cloneAge"
                     value={cloneAge}
                     onChange={(e) => setCloneAge(e.target.value)}
                   >
@@ -2566,20 +2569,20 @@ export default function Dashboard() {
                 <div className="upload-zone" onClick={() => document.getElementById("cloneFiles")?.click()}>
                   <Volume2 size={20} className="mb-2 mx-auto" />
                   <div>{cloneFiles.length > 0 ? `${cloneFiles.length} files selected` : "Drop samples here or click to browse"}</div>
-                  <input 
-                    type="file" 
-                    id="cloneFiles" 
-                    multiple 
-                    accept="audio/*" 
+                  <input
+                    type="file"
+                    id="cloneFiles"
+                    multiple
+                    accept="audio/*"
                     onChange={(e) => setCloneFiles(Array.from(e.target.files || []))}
                   />
                 </div>
               </div>
               <div className="field">
                 <div className="flex items-start gap-3 p-4 bg-white/5 border border-white/10 rounded-xl mb-4">
-                  <input 
-                    type="checkbox" 
-                    id="cloneConsent" 
+                  <input
+                    type="checkbox"
+                    id="cloneConsent"
                     className="mt-1"
                     checked={cloneConsent}
                     onChange={(e) => setCloneConsent(e.target.checked)}
@@ -2591,12 +2594,12 @@ export default function Dashboard() {
               </div>
 
               <div className="flex gap-2.5 items-center">
-                <button 
-                  className="btn primary" 
+                <button
+                  className="btn primary"
                   onClick={handleClone}
                   disabled={isCloning || !cloneName || cloneFiles.length === 0 || !cloneConsent}
                 >
-                  {isCloning ? <Loader2 size={16} className="animate-spin" /> : <Copy size={16} />} 
+                  {isCloning ? <Loader2 size={16} className="animate-spin" /> : <Copy size={16} />}
                   Clone Voice
                 </button>
                 {cloneStatus.startsWith("Error") && (
@@ -2702,147 +2705,147 @@ export default function Dashboard() {
                   <div className="agents-layout-left">
                     {/* iPhone Mockup Dialer */}
                     <div className="iphone-mockup">
-                    <div className="iphone-frame">
-                      <div className="iphone-notch"></div>
-                      <div className="iphone-screen">
-                        <div className="dialer-header">
-                          <span className="dialer-time">Dialer</span>
-                        </div>
-                        <div className="dialer-agent-select">
-                          <label className="text-2xs text-faint">Agent</label>
-                          <select
-                            title="Select agent for calls"
-                            value={selectedDialerAgentId}
-                            onChange={(e) => setSelectedDialerAgentId(e.target.value)}
-                            className="dialer-select"
-                          >
-                            <option value="">Select agent</option>
-                            {displayAgents.map((a) => (
-                              <option key={a.id} value={a.id}>{a.name || a.id}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="dialer-number-display">
-                          <input
-                            type="tel"
-                            placeholder="Number"
-                            value={dialerNumber}
-                            onChange={(e) => setDialerNumber(e.target.value.replace(/\D/g, "").slice(0, 15))}
-                            className="dialer-number-input"
-                          />
-                          {dialerNumber && (
-                            <button
-                              type="button"
-                              className="dialer-backspace"
-                              onClick={() => setDialerNumber((n) => n.slice(0, -1))}
-                              title="Backspace"
-                              aria-label="Backspace"
-                            >
-                              ←
-                            </button>
-                          )}
-                        </div>
-                        <div className="dialer-pad">
-                          {["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"].map((digit) => (
-                            <button
-                              key={digit}
-                              type="button"
-                              className="dialer-key"
-                              onClick={digit === "0" ? undefined : () => setDialerNumber((n) => (n + digit).slice(0, 15))}
-                              onPointerDown={digit === "0" ? () => handleDialKeyDown(digit) : undefined}
-                              onPointerUp={digit === "0" ? () => handleDialKeyUp(digit) : undefined}
-                              onPointerLeave={digit === "0" ? () => { if (longPress0Ref.current) { clearTimeout(longPress0Ref.current); longPress0Ref.current = null; } } : undefined}
-                            >
-                              {digit === "0" ? (
-                                <span className="dialer-key-0"><span>0</span><span className="dialer-key-plus">+</span></span>
-                              ) : (
-                                digit
-                              )}
-                            </button>
-                          ))}
-                        </div>
-                        <div className="dialer-actions">
-                          {callStatus === "active" ? (
-                            <button
-                              type="button"
-                              className="dialer-end-call-btn"
-                              onClick={() => {
-                                orbit?.stop();
-                                setShowTestCallModal(false);
-                              }}
-                            >
-                              <PhoneOff size={18} />
-                              End call
-                            </button>
-                          ) : (
-                            <button
-                              className="btn primary dialer-call-btn"
-                              onClick={async () => {
-                                const num = dialerNumber.replace(/\s/g, "").replace(/[^\d+]/g, "");
-                                if (!num) return;
-                                if (!selectedDialerAgentId) {
-                                  setDialerCallStatus("Select an agent first.");
-                                  return;
-                                }
-                                setIsDialerCalling(true);
-                                setDialerCallStatus("");
-                                try {
-                                  const res = await authedFetch("/api/orbit/call", {
-                                    method: "POST",
-                                    headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({ assistantId: selectedDialerAgentId, customerNumber: num }),
-                                  });
-                                  const data = await res.json();
-                                  if (!res.ok) throw new Error(data?.error || "Outbound call failed");
-                                  setDialerCallStatus("Call initiated. Calling the number.");
-                                  fetchCallLogs();
-                                } catch (err) {
-                                  setDialerCallStatus("Error: " + (err instanceof Error ? err.message : "Call failed"));
-                                } finally {
-                                  setIsDialerCalling(false);
-                                }
-                              }}
-                              disabled={!dialerNumber.trim() || isDialerCalling}
-                            >
-                              {isDialerCalling ? <Loader2 size={18} className="animate-spin" /> : <Phone size={18} />}
-                              {isDialerCalling ? "Calling…" : "Call"}
-                            </button>
-                          )}
-                          <label className="upload-phonebook-btn">
-                            <Upload size={16} />
-                            Upload phonebook
-                            <input
-                              type="file"
-                              accept=".csv,.txt"
-                              onChange={handleBulkPhonebookUpload}
-                              hidden
-                            />
-                          </label>
-                        </div>
-                        {dialerCallStatus && (
-                          <span className={`text-2xs block text-center ${dialerCallStatus.startsWith("Error") ? "text-bad" : "text-muted"}`}>
-                            {dialerCallStatus}
-                          </span>
-                        )}
-                        {phonebookEntries.length > 0 && (
-                          <div className="phonebook-list">
-                            <div className="phonebook-header text-2xs text-faint">{phonebookEntries.length} contacts</div>
-                            <div className="phonebook-scroll">
-                              {phonebookEntries.slice(0, 8).map((p, i) => (
-                                <div
-                                  key={i}
-                                  className="phonebook-row"
-                                  onClick={() => setDialerNumber(p.number)}
-                                >
-                                  <span>{p.name}</span>
-                                  <span className="text-lime">{p.number}</span>
-                                </div>
-                              ))}
-                            </div>
+                      <div className="iphone-frame">
+                        <div className="iphone-notch"></div>
+                        <div className="iphone-screen">
+                          <div className="dialer-header">
+                            <span className="dialer-time">Dialer</span>
                           </div>
-                        )}
+                          <div className="dialer-agent-select">
+                            <label className="text-2xs text-faint">Agent</label>
+                            <select
+                              title="Select agent for calls"
+                              value={selectedDialerAgentId}
+                              onChange={(e) => setSelectedDialerAgentId(e.target.value)}
+                              className="dialer-select"
+                            >
+                              <option value="">Select agent</option>
+                              {displayAgents.map((a) => (
+                                <option key={a.id} value={a.id}>{a.name || a.id}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="dialer-number-display">
+                            <input
+                              type="tel"
+                              placeholder="Number"
+                              value={dialerNumber}
+                              onChange={(e) => setDialerNumber(e.target.value.replace(/\D/g, "").slice(0, 15))}
+                              className="dialer-number-input"
+                            />
+                            {dialerNumber && (
+                              <button
+                                type="button"
+                                className="dialer-backspace"
+                                onClick={() => setDialerNumber((n) => n.slice(0, -1))}
+                                title="Backspace"
+                                aria-label="Backspace"
+                              >
+                                ←
+                              </button>
+                            )}
+                          </div>
+                          <div className="dialer-pad">
+                            {["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"].map((digit) => (
+                              <button
+                                key={digit}
+                                type="button"
+                                className="dialer-key"
+                                onClick={digit === "0" ? undefined : () => setDialerNumber((n) => (n + digit).slice(0, 15))}
+                                onPointerDown={digit === "0" ? () => handleDialKeyDown(digit) : undefined}
+                                onPointerUp={digit === "0" ? () => handleDialKeyUp(digit) : undefined}
+                                onPointerLeave={digit === "0" ? () => { if (longPress0Ref.current) { clearTimeout(longPress0Ref.current); longPress0Ref.current = null; } } : undefined}
+                              >
+                                {digit === "0" ? (
+                                  <span className="dialer-key-0"><span>0</span><span className="dialer-key-plus">+</span></span>
+                                ) : (
+                                  digit
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                          <div className="dialer-actions">
+                            {callStatus === "active" ? (
+                              <button
+                                type="button"
+                                className="dialer-end-call-btn"
+                                onClick={() => {
+                                  orbit?.stop();
+                                  setShowTestCallModal(false);
+                                }}
+                              >
+                                <PhoneOff size={18} />
+                                End call
+                              </button>
+                            ) : (
+                              <button
+                                className="btn primary dialer-call-btn"
+                                onClick={async () => {
+                                  const num = dialerNumber.replace(/\s/g, "").replace(/[^\d+]/g, "");
+                                  if (!num) return;
+                                  if (!selectedDialerAgentId) {
+                                    setDialerCallStatus("Select an agent first.");
+                                    return;
+                                  }
+                                  setIsDialerCalling(true);
+                                  setDialerCallStatus("");
+                                  try {
+                                    const res = await authedFetch("/api/orbit/call", {
+                                      method: "POST",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({ assistantId: selectedDialerAgentId, customerNumber: num }),
+                                    });
+                                    const data = await res.json();
+                                    if (!res.ok) throw new Error(data?.error || "Outbound call failed");
+                                    setDialerCallStatus("Call initiated. Calling the number.");
+                                    fetchCallLogs();
+                                  } catch (err) {
+                                    setDialerCallStatus("Error: " + (err instanceof Error ? err.message : "Call failed"));
+                                  } finally {
+                                    setIsDialerCalling(false);
+                                  }
+                                }}
+                                disabled={!dialerNumber.trim() || isDialerCalling}
+                              >
+                                {isDialerCalling ? <Loader2 size={18} className="animate-spin" /> : <Phone size={18} />}
+                                {isDialerCalling ? "Calling…" : "Call"}
+                              </button>
+                            )}
+                            <label className="upload-phonebook-btn">
+                              <Upload size={16} />
+                              Upload phonebook
+                              <input
+                                type="file"
+                                accept=".csv,.txt"
+                                onChange={handleBulkPhonebookUpload}
+                                hidden
+                              />
+                            </label>
+                          </div>
+                          {dialerCallStatus && (
+                            <span className={`text-2xs block text-center ${dialerCallStatus.startsWith("Error") ? "text-bad" : "text-muted"}`}>
+                              {dialerCallStatus}
+                            </span>
+                          )}
+                          {phonebookEntries.length > 0 && (
+                            <div className="phonebook-list">
+                              <div className="phonebook-header text-2xs text-faint">{phonebookEntries.length} contacts</div>
+                              <div className="phonebook-scroll">
+                                {phonebookEntries.slice(0, 8).map((p, i) => (
+                                  <div
+                                    key={i}
+                                    className="phonebook-row"
+                                    onClick={() => setDialerNumber(p.number)}
+                                  >
+                                    <span>{p.name}</span>
+                                    <span className="text-lime">{p.number}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
                     </div>
 
                     {/* Knowledge Base - below iPhone, parallel to form */}
@@ -2999,72 +3002,72 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-              {userAgents.length > 0 && (
-                <div className="mt-8 max-w-[980px]">
-                  <label className="mb-3 block text-2xs font-semibold text-faint uppercase tracking-wider">My Agents</label>
-                  <div className="space-y-2">
-                    {userAgents.map((agent) => (
-                      <div key={agent.id} className="flex items-center justify-between p-3 rounded-xl border border-white/10 bg-white/5">
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium truncate">{agent.name || "Unnamed Agent"}</div>
-                          <div className="text-2xs text-faint truncate">
-                            {agent.firstMessage || "No first message"}
+                {userAgents.length > 0 && (
+                  <div className="mt-8 max-w-[980px]">
+                    <label className="mb-3 block text-2xs font-semibold text-faint uppercase tracking-wider">My Agents</label>
+                    <div className="space-y-2">
+                      {userAgents.map((agent) => (
+                        <div key={agent.id} className="flex items-center justify-between p-3 rounded-xl border border-white/10 bg-white/5">
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium truncate">{agent.name || "Unnamed Agent"}</div>
+                            <div className="text-2xs text-faint truncate">
+                              {agent.firstMessage || "No first message"}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 ml-4">
+                            <button
+                              type="button"
+                              className="btn flex items-center gap-1.5 py-1.5 px-3 text-2xs"
+                              onClick={() => handleDeployAgent(agent.id)}
+                              title="Deploy"
+                            >
+                              <Zap size={14} />
+                              Deploy
+                            </button>
+                            <button
+                              type="button"
+                              className="btn flex items-center gap-1.5 py-1.5 px-3 text-2xs"
+                              onClick={() => handleEditAgent(agent.id)}
+                              title="Edit"
+                            >
+                              <Pencil size={14} />
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="btn flex items-center gap-1.5 py-1.5 px-3 text-2xs text-bad hover:bg-bad/10"
+                              onClick={() => handleDeleteAgent(agent.id)}
+                              disabled={isDeletingAgent === agent.id}
+                              title="Delete"
+                            >
+                              {isDeletingAgent === agent.id ? (
+                                <Loader2 size={14} className="animate-spin" />
+                              ) : (
+                                <Trash2 size={14} />
+                              )}
+                              Delete
+                            </button>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 ml-4">
-                          <button
-                            type="button"
-                            className="btn flex items-center gap-1.5 py-1.5 px-3 text-2xs"
-                            onClick={() => handleDeployAgent(agent.id)}
-                            title="Deploy"
-                          >
-                            <Zap size={14} />
-                            Deploy
-                          </button>
-                          <button
-                            type="button"
-                            className="btn flex items-center gap-1.5 py-1.5 px-3 text-2xs"
-                            onClick={() => handleEditAgent(agent.id)}
-                            title="Edit"
-                          >
-                            <Pencil size={14} />
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            className="btn flex items-center gap-1.5 py-1.5 px-3 text-2xs text-bad hover:bg-bad/10"
-                            onClick={() => handleDeleteAgent(agent.id)}
-                            disabled={isDeletingAgent === agent.id}
-                            title="Delete"
-                          >
-                            {isDeletingAgent === agent.id ? (
-                              <Loader2 size={14} className="animate-spin" />
-                            ) : (
-                              <Trash2 size={14} />
-                            )}
-                            Delete
-                          </button>
-                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-8 max-w-[980px]">
+                  <label className="mb-3 block text-2xs font-semibold text-faint uppercase tracking-wider">Active</label>
+                  <div className={`placeholder-pane h-24 text-2xs ${callStatus === "active" ? "border-lime" : ""}`}>
+                    {callStatus === "active" ? (
+                      <div className="flex flex-col items-center gap-2">
+                        <div className="status-dot ok animate-pulse"></div>
+                        <div className="text-lime">Session Active: {activeAgentId}</div>
                       </div>
-                    ))}
+                    ) : (
+                      "No active call"
+                    )}
                   </div>
                 </div>
-              )}
-
-              <div className="mt-8 max-w-[980px]">
-                <label className="mb-3 block text-2xs font-semibold text-faint uppercase tracking-wider">Active</label>
-                <div className={`placeholder-pane h-24 text-2xs ${callStatus === "active" ? "border-lime" : ""}`}>
-                  {callStatus === "active" ? (
-                    <div className="flex flex-col items-center gap-2">
-                      <div className="status-dot ok animate-pulse"></div>
-                      <div className="text-lime">Session Active: {activeAgentId}</div>
-                    </div>
-                  ) : (
-                    "No active call"
-                  )}
-                </div>
               </div>
-            </div>
             </div>
           )}
 
@@ -3099,14 +3102,14 @@ export default function Dashboard() {
 
               <div className="vl-grid">
                 {displayAgents.map((a) => (
-                  <div 
-                    key={a.id} 
+                  <div
+                    key={a.id}
                     className={`vl-card ${activeAgentId === a.id && callStatus === "active" ? "playing" : ""}`}
                     onClick={() => handleToggleCall(a.id)}
                   >
                     <div className="vl-card-avatar">
-                      <Users 
-                        size={16} 
+                      <Users
+                        size={16}
                         className={activeAgentId === a.id && callStatus === "active" ? "text-lime animate-pulse" : ""}
                       />
                     </div>
@@ -3137,19 +3140,17 @@ export default function Dashboard() {
                         <Phone size={14} />
                       )}
                     </button>
-                    {user?.id === a.userId && (
-                      <button
-                        type="button"
-                        className="vl-card-edit-btn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleEditAgent(a.id);
-                        }}
-                        title="Edit Agent"
-                      >
-                        <Pencil size={14} />
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      className="vl-card-edit-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEditAgent(a.id);
+                      }}
+                      title="Edit Agent"
+                    >
+                      <Pencil size={14} />
+                    </button>
                   </div>
                 ))}
                 {displayAgents.length === 0 && !isFetchingBases && !agentBasesError && (
@@ -3264,37 +3265,37 @@ export default function Dashboard() {
                             {isExpanded && (
                               <div className="call-log-transcript">
                                 <div className="call-log-transcript-inner">
-                                {isExpandedCallLoading ? (
-                                  <div className="flex items-center gap-2 text-muted text-2xs">
-                                    <Loader2 size={16} className="animate-spin" />
-                                    Loading transcript…
-                                  </div>
-                                ) : expandedCallTranscript && !["(No transcript available)", "(Could not load transcript)"].includes(expandedCallTranscript) ? (
-                                  <>
-                                    <div className="call-log-transcript-toolbar">
-                                      <button
-                                        type="button"
-                                        className="btn text-2xs py-1 px-2 flex items-center gap-1.5"
-                                        onClick={async () => {
-                                          try {
-                                            await navigator.clipboard.writeText(expandedCallTranscript);
-                                            setCallLogTranscriptCopyFeedback(true);
-                                            setTimeout(() => setCallLogTranscriptCopyFeedback(false), 2000);
-                                          } catch {
-                                            /* clipboard failed */
-                                          }
-                                        }}
-                                        title="Copy to clipboard (use as knowledge base)"
-                                      >
-                                        <Copy size={16} />
-                                        {callLogTranscriptCopyFeedback ? "Copied!" : "Copy"}
-                                      </button>
+                                  {isExpandedCallLoading ? (
+                                    <div className="flex items-center gap-2 text-muted text-2xs">
+                                      <Loader2 size={16} className="animate-spin" />
+                                      Loading transcript…
                                     </div>
-                                    <pre className="call-log-transcript-text">{expandedCallTranscript}</pre>
-                                  </>
-                                ) : (
-                                  <div className="call-log-transcript-empty">{expandedCallTranscript || "No transcript available"}</div>
-                                )}
+                                  ) : expandedCallTranscript && !["(No transcript available)", "(Could not load transcript)"].includes(expandedCallTranscript) ? (
+                                    <>
+                                      <div className="call-log-transcript-toolbar">
+                                        <button
+                                          type="button"
+                                          className="btn text-2xs py-1 px-2 flex items-center gap-1.5"
+                                          onClick={async () => {
+                                            try {
+                                              await navigator.clipboard.writeText(expandedCallTranscript);
+                                              setCallLogTranscriptCopyFeedback(true);
+                                              setTimeout(() => setCallLogTranscriptCopyFeedback(false), 2000);
+                                            } catch {
+                                              /* clipboard failed */
+                                            }
+                                          }}
+                                          title="Copy to clipboard (use as knowledge base)"
+                                        >
+                                          <Copy size={16} />
+                                          {callLogTranscriptCopyFeedback ? "Copied!" : "Copy"}
+                                        </button>
+                                      </div>
+                                      <pre className="call-log-transcript-text">{expandedCallTranscript}</pre>
+                                    </>
+                                  ) : (
+                                    <div className="call-log-transcript-empty">{expandedCallTranscript || "No transcript available"}</div>
+                                  )}
                                 </div>
                               </div>
                             )}
@@ -3304,6 +3305,377 @@ export default function Dashboard() {
                     </div>
                   );
                 })()}
+              </div>
+            </div>
+          )}
+
+          {activeTab === "pane-dialer" && (
+            <div className="tab-pane active dialer-pane">
+              <div className="dialer-layout">
+                <div className="dialer-left">
+                  <div className="iphone-mockup">
+                    <div className="iphone-frame">
+                      <div className="iphone-notch"></div>
+                      <div className="iphone-screen">
+                        <div className="dialer-header">
+                          <span className="dialer-time">Outbound</span>
+                        </div>
+                        <div className="dialer-agent-select">
+                          <label className="text-2xs text-faint">Agent</label>
+                          <select
+                            title="Select agent for calls"
+                            value={selectedDialerAgentId}
+                            onChange={(e) => setSelectedDialerAgentId(e.target.value)}
+                            className="dialer-select"
+                          >
+                            <option value="">Select agent</option>
+                            {displayAgents.map((a) => (
+                              <option key={a.id} value={a.id}>{a.name || a.id}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="dialer-number-display">
+                          <input
+                            type="tel"
+                            placeholder="Number"
+                            value={dialerNumber}
+                            onChange={(e) => setDialerNumber(e.target.value.replace(/\D/g, "").slice(0, 15))}
+                            className="dialer-number-input"
+                          />
+                          {dialerNumber && (
+                            <button
+                              type="button"
+                              className="dialer-backspace"
+                              onClick={() => setDialerNumber((n) => n.slice(0, -1))}
+                              title="Backspace"
+                              aria-label="Backspace"
+                            >
+                              ←
+                            </button>
+                          )}
+                        </div>
+                        <div className="dialer-pad">
+                          {["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"].map((digit) => (
+                            <button
+                              key={digit}
+                              type="button"
+                              className="dialer-key"
+                              onClick={digit === "0" ? undefined : () => setDialerNumber((n) => (n + digit).slice(0, 15))}
+                              onPointerDown={digit === "0" ? () => handleDialKeyDown(digit) : undefined}
+                              onPointerUp={digit === "0" ? () => handleDialKeyUp(digit) : undefined}
+                              onPointerLeave={digit === "0" ? () => { if (longPress0Ref.current) { clearTimeout(longPress0Ref.current); longPress0Ref.current = null; } } : undefined}
+                            >
+                              {digit === "0" ? (
+                                <span className="dialer-key-0"><span>0</span><span className="dialer-key-plus">+</span></span>
+                              ) : (
+                                digit
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="dialer-actions">
+                          <button
+                            className="btn primary dialer-call-btn w-full"
+                            onClick={async () => {
+                              const num = dialerNumber.replace(/\s/g, "").replace(/[^\d+]/g, "");
+                              if (!num) return;
+                              if (!selectedDialerAgentId) {
+                                setDialerCallStatus("Select an agent first.");
+                                return;
+                              }
+                              setIsDialerCalling(true);
+                              setDialerCallStatus("");
+                              try {
+                                const res = await fetch("/api/orbit/call", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ assistantId: selectedDialerAgentId, customerNumber: num }),
+                                });
+                                const data = await res.json();
+                                if (!res.ok) throw new Error(data?.error || "Outbound call failed");
+                                setDialerCallStatus("Call initiated.");
+                                fetchCallLogs();
+                              } catch (err) {
+                                setDialerCallStatus("Error: " + (err instanceof Error ? err.message : "Call failed"));
+                              } finally {
+                                setIsDialerCalling(false);
+                              }
+                            }}
+                            disabled={!dialerNumber.trim() || isDialerCalling}
+                          >
+                            {isDialerCalling ? <Loader2 size={18} className="animate-spin" /> : <Phone size={18} />}
+                            {isDialerCalling ? "Calling…" : "Call"}
+                          </button>
+                        </div>
+                        {dialerCallStatus && (
+                          <span className={`text-2xs block text-center mt-2 ${dialerCallStatus.startsWith("Error") ? "text-bad" : "text-muted"}`}>
+                            {dialerCallStatus}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="dialer-right">
+                  <div className="dialer-right-tabs">
+                    <button
+                      className={`dialer-right-tab ${dialerSubTab === "phonebook" ? "active" : ""}`}
+                      onClick={() => setDialerSubTab("phonebook")}
+                    >
+                      <Plus size={14} />
+                      Contacts
+                    </button>
+                    <button
+                      className={`dialer-right-tab ${dialerSubTab === "bulk-dial" ? "active" : ""}`}
+                      onClick={() => setDialerSubTab("bulk-dial")}
+                    >
+                      <Upload size={14} />
+                      Bulk Dial
+                    </button>
+                  </div>
+                  {dialerSubTab === "phonebook" && (
+                    <div className="dialer-right-card">
+                      <h4 className="dialer-right-title">
+                        <Plus size={16} className="text-lime" />
+                        Add Contact
+                      </h4>
+                      <div className="space-y-3">
+                        <div>
+                          <label className="text-2xs text-faint block mb-1">Name</label>
+                          <input
+                            type="text"
+                            id="newContactName"
+                            placeholder="John Doe"
+                            className="dialer-input"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-2xs text-faint block mb-1">Phone Number</label>
+                          <input
+                            type="tel"
+                            id="newContactNumber"
+                            placeholder="+15551234567"
+                            className="dialer-input"
+                          />
+                        </div>
+                        <button
+                          className="btn primary w-full flex items-center justify-center gap-2"
+                          onClick={() => {
+                            const nameEl = document.getElementById("newContactName") as HTMLInputElement;
+                            const numberEl = document.getElementById("newContactNumber") as HTMLInputElement;
+                            if (!nameEl?.value.trim() || !numberEl?.value.trim()) return;
+                            const number = numberEl.value.replace(/\D/g, "");
+                            setPhonebookEntries((prev) => [...prev, { name: nameEl.value.trim(), number }]);
+                            nameEl.value = "";
+                            numberEl.value = "";
+                          }}
+                        >
+                          <Plus size={16} />
+                          Add Contact
+                        </button>
+                      </div>
+                      {phonebookEntries.length > 0 && (
+                        <div className="mt-4">
+                          <h5 className="text-2xs text-faint uppercase tracking-wider mb-2">Saved Contacts ({phonebookEntries.length})</h5>
+                          <div className="phonebook-list-scroll">
+                            {phonebookEntries.map((entry, idx) => (
+                              <div key={idx} className="phonebook-entry">
+                                <div className="flex-1 min-w-0">
+                                  <span className="font-medium">{entry.name}</span>
+                                  <span className="text-faint ml-2">{entry.number}</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    className="btn primary text-2xs py-1 px-2 flex items-center gap-1"
+                                    onClick={async () => {
+                                      if (!selectedDialerAgentId) {
+                                        setDialerCallStatus("Select an agent first.");
+                                        return;
+                                      }
+                                      setIsDialerCalling(true);
+                                      setDialerCallStatus("");
+                                      try {
+                                        const res = await fetch("/api/orbit/call", {
+                                          method: "POST",
+                                          headers: { "Content-Type": "application/json" },
+                                          body: JSON.stringify({ assistantId: selectedDialerAgentId, customerNumber: entry.number }),
+                                        });
+                                        const data = await res.json();
+                                        if (!res.ok) throw new Error(data?.error || "Call failed");
+                                        setDialerCallStatus(`Calling ${entry.name}...`);
+                                        fetchCallLogs();
+                                      } catch (err) {
+                                        setDialerCallStatus("Error: " + (err instanceof Error ? err.message : "Call failed"));
+                                      } finally {
+                                        setIsDialerCalling(false);
+                                      }
+                                    }}
+                                    disabled={isDialerCalling}
+                                    title={`Call ${entry.name}`}
+                                  >
+                                    <Phone size={12} />
+                                  </button>
+                                  <button
+                                    className="text-faint hover:text-bad transition p-1"
+                                    onClick={() => setPhonebookEntries((prev) => prev.filter((_, i) => i !== idx))}
+                                    title="Delete contact"
+                                  >
+                                    <X size={14} />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <button
+                            className="btn w-full mt-3 flex items-center justify-center gap-2 text-xs"
+                            onClick={() => setDialerSubTab("bulk-dial")}
+                          >
+                            <Upload size={14} />
+                            Bulk Dial All ({phonebookEntries.length})
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {dialerSubTab === "bulk-dial" && (
+                    <div className="dialer-right-card">
+                      <h4 className="dialer-right-title">
+                        <Upload size={16} className="text-lime" />
+                        Bulk Dial
+                      </h4>
+                      <div className="csv-guide">
+                        <p className="text-2xs text-faint mb-2 font-medium">CSV Format Guide</p>
+                        <p className="text-xs text-muted mb-2">Your CSV file should have the following format:</p>
+                        <pre className="csv-example">
+                          {`name,number
+John Doe,+15551234567
+Jane Smith,+15559876543`}
+                        </pre>
+                        <p className="text-2xs text-faint mt-2">Requirements:</p>
+                        <ul className="csv-requirements">
+                          <li>First row must be headers: <code className="text-lime/70">name,number</code></li>
+                          <li>Phone numbers should include country code</li>
+                          <li>Max 1000 contacts per upload</li>
+                        </ul>
+                      </div>
+                      <button
+                        className="download-csv-btn"
+                        onClick={() => {
+                          const csv = "name,number\nJohn Doe,+15551234567\nJane Smith,+15559876543\n";
+                          const blob = new Blob([csv], { type: "text/csv" });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = "bulk_dial_template.csv";
+                          a.click();
+                          URL.revokeObjectURL(url);
+                        }}
+                      >
+                        <Download size={14} />
+                        Download CSV Template
+                      </button>
+                      <div
+                        className="upload-zone cursor-pointer"
+                        onClick={() => document.getElementById("bulkCsvUpload")?.click()}
+                      >
+                        <Upload size={24} className="mb-2" />
+                        <span className="text-xs">Click to upload CSV file</span>
+                        <span className="text-2xs text-faint">.csv files accepted</span>
+                        <input
+                          type="file"
+                          id="bulkCsvUpload"
+                          accept=".csv,.txt"
+                          onChange={handleBulkPhonebookUpload}
+                          hidden
+                        />
+                      </div>
+                      {phonebookEntries.length > 0 && (
+                        <div className="mt-4 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-faint">{phonebookEntries.length} contacts loaded</span>
+                          </div>
+                          {!isBulkDialing && (
+                            <button
+                              className="btn primary w-full flex items-center justify-center gap-2"
+                              onClick={async () => {
+                                if (!selectedDialerAgentId) {
+                                  setDialerCallStatus("Select an agent first.");
+                                  return;
+                                }
+                                setIsBulkDialing(true);
+                                bulkDialAbortRef.current = false;
+                                setBulkDialResults([]);
+                                setBulkDialProgress({ current: 0, total: phonebookEntries.length, status: "Starting..." });
+                                const results: { number: string; name: string; status: string }[] = [];
+                                for (let i = 0; i < phonebookEntries.length; i++) {
+                                  if (bulkDialAbortRef.current) {
+                                    setBulkDialProgress({ current: i, total: phonebookEntries.length, status: "Cancelled" });
+                                    break;
+                                  }
+                                  const entry = phonebookEntries[i];
+                                  setBulkDialProgress({ current: i + 1, total: phonebookEntries.length, status: `Calling ${entry.name}...` });
+                                  try {
+                                    const res = await fetch("/api/orbit/call", {
+                                      method: "POST",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({ assistantId: selectedDialerAgentId, customerNumber: entry.number }),
+                                    });
+                                    const data = await res.json();
+                                    if (!res.ok) throw new Error(data?.error || "Call failed");
+                                    results.push({ number: entry.number, name: entry.name, status: "Initiated" });
+                                  } catch (err) {
+                                    results.push({ number: entry.number, name: entry.name, status: `Failed: ${err instanceof Error ? err.message : "Unknown"}` });
+                                  }
+                                  setBulkDialResults([...results]);
+                                  if (i < phonebookEntries.length - 1) {
+                                    await new Promise((r) => setTimeout(r, 2000));
+                                  }
+                                }
+                                setIsBulkDialing(false);
+                                setBulkDialProgress({ current: phonebookEntries.length, total: phonebookEntries.length, status: "Complete" });
+                                fetchCallLogs();
+                              }}
+                            >
+                              <Phone size={16} />
+                              Start Bulk Dial
+                            </button>
+                          )}
+                          {isBulkDialing && (
+                            <div className="space-y-2">
+                              <div className="bulk-progress-bar">
+                                <div
+                                  className="bulk-progress-fill"
+                                  style={{ "--progress-width": `${(bulkDialProgress.current / bulkDialProgress.total) * 100}%` } as React.CSSProperties}
+                                ></div>
+                              </div>
+                              <p className="text-2xs text-faint text-center">{bulkDialProgress.status}</p>
+                              <button
+                                className="btn danger w-full flex items-center justify-center gap-2"
+                                onClick={() => { bulkDialAbortRef.current = true; }}
+                              >
+                                <PhoneOff size={16} />
+                                Cancel Bulk Dial
+                              </button>
+                            </div>
+                          )}
+                          {bulkDialResults.length > 0 && (
+                            <div className="mt-3">
+                              <h5 className="text-2xs text-faint uppercase tracking-wider mb-2">Results</h5>
+                              <div className="bulk-results-list">
+                                {bulkDialResults.map((r, idx) => (
+                                  <div key={idx} className="bulk-result-row">
+                                    <span className="flex-1 min-w-0 truncate">{r.name} ({r.number})</span>
+                                    <span className={`ml-2 ${r.status === "Initiated" ? "text-lime" : "text-bad"}`}>{r.status}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}

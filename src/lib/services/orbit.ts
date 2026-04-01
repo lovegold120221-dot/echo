@@ -386,9 +386,10 @@ export async function createAssistantFromScratch(params: {
   language?: string;
   voice?: { provider: 'vapi' | '11labs'; voiceId: string };
   toolIds?: string[];
+  phoneNumberId?: string;
 }) {
-  const { name, firstMessage, systemPrompt, language, voice, toolIds } = params;
-  const payload = {
+  const { name, firstMessage, systemPrompt, language, voice, toolIds, phoneNumberId } = params;
+  const payload: Record<string, unknown> = {
     name,
     firstMessage: firstMessage || undefined,
     firstMessageMode: 'assistant-speaks-first' as const,
@@ -397,6 +398,7 @@ export async function createAssistantFromScratch(params: {
     transcriber: buildAssistantTranscriberConfig(language),
     ...buildWebCallAssistantConfig(),
   };
+  if (phoneNumberId) payload.phoneNumberId = phoneNumberId;
   return orbitCoreRequest('POST', '/assistant', payload);
 }
 
@@ -406,11 +408,15 @@ export async function createAssistantFromScratch(params: {
 export async function createOutboundCall(params: {
   assistantId: string;
   customerNumber: string;
+  phoneNumberId?: string;
 }) {
-  const phoneNumberId = (process.env.PHONE_NUMBER_ID || process.env.VAPI_PHONE_NUMBER_ID || '').trim();
+  let phoneNumberId = params.phoneNumberId?.trim();
+  if (!phoneNumberId) {
+    phoneNumberId = (process.env.PHONE_NUMBER_ID || process.env.VAPI_PHONE_NUMBER_ID || '').trim();
+  }
   if (!phoneNumberId) {
     throw new Error(
-      'Missing PHONE_NUMBER_ID. Add a phone number ID to .env.local for outbound calls.'
+      'Missing PHONE_NUMBER_ID. Add a phone number ID to .env.local for outbound calls, or provision one per agent.'
     );
   }
   const e164 = params.customerNumber.startsWith('+')
