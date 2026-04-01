@@ -18,6 +18,12 @@ type AdminAgentRow = {
   updated_at: string;
 };
 
+type AdminAgentKnowledgeRow = {
+  id: string;
+  assistant_id: string | null;
+  vapi_file_id: string;
+};
+
 function getClient(request: Request) {
   return createSupabaseClientFromRequest(request);
 }
@@ -91,6 +97,89 @@ export async function POST(request: Request) {
       updated_at: new Date().toISOString(),
     };
 
+    const { data: knowledgeRows, error: knowledgeError } = await supabase
+      .from('admin_agent_knowledge')
+      .select('id, assistant_id, vapi_file_id')
+      .eq('user_id', user.id)
+      .or(`assistant_id.eq.${assistantId},assistant_id.is.null`);
+
+    if (knowledgeError) {
+      console.error('[admin-agents POST] knowledge fetch error:', knowledgeError);
+      return NextResponse.json({ error: knowledgeError.message }, { status: 500 });
+    }
+
+    const rows = (knowledgeRows || []) as AdminAgentKnowledgeRow[];
+    const knowledgeFileIds = rows
+      .map((row) => row.vapi_file_id)
+      .filter((id) => typeof id === 'string' && !!id.trim());
+
+    if (rows.some((row) => row.assistant_id === null)) {
+      const unassignedIds = rows.filter((row) => row.assistant_id === null).map((row) => row.id);
+      if (unassignedIds.length > 0) {
+        const { error: bindError } = await supabase
+          .from('admin_agent_knowledge')
+          .update({
+            assistant_id: assistantId,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('user_id', user.id)
+          .in('id', unassignedIds);
+
+        if (bindError) {
+          console.error('[admin-agents POST] knowledge bind error:', bindError);
+          return NextResponse.json({ error: bindError.message }, { status: 500 });
+        }
+      }
+    }
+
+    const buildSystemPrompt = (base: string, hasKnowledge: boolean) => {
+      if (!hasKnowledge) return base;
+      const instruction =
+        "\n\nYou have a knowledge base with uploaded documents. You MUST use the 'knowledge-search' tool before answering any question that could be covered by those documents. Treat that knowledge base as your primary source of truth.";
+      return `${base.trim()}${instruction}`;
+    };
+
+    const [voiceProvider, voiceId] = [
+      payload.voice_provider || 'vapi',
+      payload.voice_id || 'Elliot',
+    ];
+
+    const systemPromptRaw = payload.system_prompt || 'You are a helpful AI assistant.';
+    const orbitBody: Record<string, unknown> = {
+      assistantId,
+      name,
+      firstMessage: payload.first_message || undefined,
+      language: payload.language || 'multilingual',
+      voice: {
+        provider: voiceProvider,
+        voiceId,
+      },
+      systemPrompt: buildSystemPrompt(systemPromptRaw, knowledgeFileIds.length > 0),
+    };
+
+    if (knowledgeFileIds.length > 0) {
+      orbitBody.fileIds = knowledgeFileIds;
+    }
+
+    const host = request.headers.get('x-forwarded-host') || request.headers.get('host');
+    const proto = request.headers.get('x-forwarded-proto') || 'https';
+    const baseUrl = host ? `${proto}://${host}` : new URL(request.url).origin;
+
+    const orbitRes = await fetch(`${baseUrl}/api/orbit/agents`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: request.headers.get('authorization') || '',
+      },
+      body: JSON.stringify(orbitBody),
+    });
+
+    const orbitData = await orbitRes.json().catch(() => ({}));
+    if (!orbitRes.ok) {
+      const message = typeof orbitData?.error === 'string' ? orbitData.error : 'Failed to sync assistant with knowledge base';
+      return NextResponse.json({ error: message }, { status: orbitRes.status || 500 });
+    }
+
     const { data, error } = await supabase
       .from('admin-agent')
       .upsert(payload, { onConflict: 'user_id,assistant_id' })
@@ -102,7 +191,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json(data);
+    return NextResponse.json({
+      ...data,
+      knowledgeFileIds,
+      syncedWithOrbit: true,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to upsert admin agent';
     console.error('[admin-agents POST]', error);

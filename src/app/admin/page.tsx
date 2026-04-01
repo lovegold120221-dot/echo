@@ -38,6 +38,18 @@ type PhoneOption = {
   name?: string;
 };
 
+type KnowledgeFile = {
+  id: string;
+  assistantId: string | null;
+  fileName: string;
+  sizeBytes: number;
+  vapiFileId: string;
+};
+
+function sanitizeProviderBranding(message: string) {
+  return message.replace(/elevenlabs|11labs|vapi/gi, "Eburon AI");
+}
+
 const DEFAULT_PHONE_OPTIONS: PhoneOption[] = [
   { id: "b05646d2-9c25-45fc-8862-b2203544afd2", number: "+1 (844) 756 0329", name: "Default US" },
   { id: "31272481-96ff-4c24-82c8-1f5f655c3a7f", number: "+1 (844) 935 0977", name: "Default US 2" },
@@ -66,6 +78,9 @@ export default function AdminPage() {
   const [testCallStatus, setTestCallStatus] = useState<"idle" | "loading" | "active">("idle");
   const [testCallTranscript, setTestCallTranscript] = useState<{ text: string; role: "user" | "agent" }[]>([]);
   const [testCallLive, setTestCallLive] = useState<{ user: string; agent: string }>({ user: "", agent: "" });
+  const [knowledgeFiles, setKnowledgeFiles] = useState<KnowledgeFile[]>([]);
+  const [isUploadingKnowledge, setIsUploadingKnowledge] = useState(false);
+  const [knowledgeStatus, setKnowledgeStatus] = useState("");
   const [isDeploying, setIsDeploying] = useState(false);
   const [deployStatus, setDeployStatus] = useState("");
   const [deployedAssistantId, setDeployedAssistantId] = useState<string | null>(null);
@@ -181,12 +196,34 @@ export default function AdminPage() {
     }
   }, [authedFetch]);
 
+  const loadKnowledgeFiles = useCallback(
+    async (assistantId: string | null) => {
+      try {
+        const query = assistantId ? `?assistantId=${encodeURIComponent(assistantId)}` : "";
+        const res = await authedFetch(`/api/admin-agents/knowledge${query}`, { cache: "no-store" });
+        const data = await res.json().catch(() => []);
+        if (!res.ok) {
+          throw new Error(typeof data?.error === "string" ? data.error : "Failed to load knowledge files");
+        }
+        setKnowledgeFiles(Array.isArray(data) ? data : []);
+      } catch (err) {
+        setKnowledgeFiles([]);
+        setKnowledgeStatus(`Error: ${sanitizeProviderBranding(err instanceof Error ? err.message : "Failed to load knowledge")}`);
+      }
+    },
+    [authedFetch]
+  );
+
   useEffect(() => {
     loadAgents();
     loadVoices();
     loadPhoneNumbers();
     loadDeployedAssistant();
   }, [loadAgents, loadVoices, loadPhoneNumbers, loadDeployedAssistant]);
+
+  useEffect(() => {
+    loadKnowledgeFiles(!isNew && selectedId ? selectedId : null);
+  }, [isNew, selectedId, loadKnowledgeFiles]);
 
   useEffect(() => {
     if (isNew && !formPhone.trim() && phoneOptions.length > 0) {
@@ -301,14 +338,20 @@ export default function AdminPage() {
           const syncErr = await syncRes.json().catch(() => ({}));
           throw new Error(syncErr?.error || "Saved assistant but failed to sync admin record");
         }
+        const syncData = await syncRes.json().catch(() => ({}));
+        const linkedCount = Array.isArray(syncData?.knowledgeFileIds) ? syncData.knowledgeFileIds.length : 0;
+        if (linkedCount > 0) {
+          setKnowledgeStatus(`${linkedCount} knowledge file(s) linked to this agent.`);
+        }
       }
 
       await loadAgents();
       if (savedAssistantId) setSelectedId(savedAssistantId);
       setIsNew(false);
+      await loadKnowledgeFiles(savedAssistantId || null);
       alert(isNew ? "Agent created" : "Agent updated");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to save agent");
+      alert(sanitizeProviderBranding(err instanceof Error ? err.message : "Failed to save agent"));
     } finally {
       setIsSaving(false);
     }
@@ -336,9 +379,68 @@ export default function AdminPage() {
       if (next.length > 0) setSelectedId(next[0].id);
       else createNewAgent();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete agent");
+      alert(sanitizeProviderBranding(err instanceof Error ? err.message : "Failed to delete agent"));
     }
   };
+
+  const handleKnowledgeUpload = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(e.target.files || []);
+      if (files.length === 0) return;
+
+      setIsUploadingKnowledge(true);
+      setKnowledgeStatus("");
+      let uploaded = 0;
+      try {
+        for (const file of files) {
+          const formData = new FormData();
+          formData.append("file", file);
+          if (!isNew && selectedId) {
+            formData.append("assistantId", selectedId);
+          }
+
+          const res = await authedFetch("/api/admin-agents/knowledge", {
+            method: "POST",
+            body: formData,
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            throw new Error(typeof data?.error === "string" ? data.error : `Failed to upload ${file.name}`);
+          }
+          uploaded += 1;
+        }
+
+        await loadKnowledgeFiles(!isNew && selectedId ? selectedId : null);
+        setKnowledgeStatus(`${uploaded} file(s) uploaded to knowledge base.`);
+      } catch (err) {
+        setKnowledgeStatus(`Error: ${sanitizeProviderBranding(err instanceof Error ? err.message : "Upload failed")}`);
+      } finally {
+        setIsUploadingKnowledge(false);
+        e.target.value = "";
+      }
+    },
+    [authedFetch, isNew, loadKnowledgeFiles, selectedId]
+  );
+
+  const removeKnowledgeFile = useCallback(
+    async (id: string) => {
+      try {
+        const res = await authedFetch("/api/admin-agents/knowledge", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(typeof data?.error === "string" ? data.error : "Failed to delete knowledge file");
+        }
+        setKnowledgeFiles((prev) => prev.filter((f) => f.id !== id));
+      } catch (err) {
+        setKnowledgeStatus(`Error: ${sanitizeProviderBranding(err instanceof Error ? err.message : "Delete failed")}`);
+      }
+    },
+    [authedFetch]
+  );
 
   const deployAgentToMainApp = useCallback(async () => {
     if (!selectedId || isNew) return;
@@ -637,11 +739,37 @@ export default function AdminPage() {
               <label>Documentation URL</label>
               <input type="url" value={formKbUrl} onChange={(e) => setFormKbUrl(e.target.value)} placeholder="https://your-docs.com/data" />
             </div>
-            <div className="kb-zone">
+            <label className="kb-zone" htmlFor="adminKnowledgeFiles">
               <div style={{ fontSize: "1.5rem", marginBottom: 10 }}>📄</div>
-              <div style={{ fontWeight: 600 }}>Upload Knowledge Files</div>
-              <div style={{ color: "#888", fontSize: "0.75rem", marginTop: 4 }}>PDF, TXT, JSON (Max 50MB)</div>
-            </div>
+              <div style={{ fontWeight: 600 }}>{isUploadingKnowledge ? "Uploading..." : "Upload Knowledge Files"}</div>
+              <div style={{ color: "#888", fontSize: "0.75rem", marginTop: 4 }}>PDF, TXT, CSV, DOCX, JSON, XML, YAML, LOG (Max 300KB)</div>
+            </label>
+            <input
+              id="adminKnowledgeFiles"
+              type="file"
+              className="hidden-file-input"
+              multiple
+              onChange={handleKnowledgeUpload}
+              disabled={isUploadingKnowledge}
+            />
+
+            {knowledgeStatus && <div className={`kb-status ${knowledgeStatus.startsWith("Error") ? "error" : "ok"}`}>{knowledgeStatus}</div>}
+
+            {knowledgeFiles.length > 0 && (
+              <div className="kb-files">
+                {knowledgeFiles.map((file) => (
+                  <div key={file.id} className="kb-file-row">
+                    <div className="kb-file-main">
+                      <strong>{file.fileName}</strong>
+                      <span>{(file.sizeBytes / 1024).toFixed(1)} KB</span>
+                    </div>
+                    <button type="button" className="btn btn-delete" onClick={() => removeKnowledgeFile(file.id)}>
+                      <Trash2 size={14} /> Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </main>
@@ -900,6 +1028,48 @@ export default function AdminPage() {
           transition: 0.2s;
         }
         .kb-zone:hover { border-color: var(--accent-green); background: rgba(191,255,0,0.02); }
+        .hidden-file-input {
+          position: absolute;
+          width: 1px;
+          height: 1px;
+          opacity: 0;
+          pointer-events: none;
+        }
+        .kb-status {
+          margin-top: 10px;
+          font-size: 0.82rem;
+        }
+        .kb-status.ok { color: var(--accent-green); }
+        .kb-status.error { color: #ff7676; }
+        .kb-files {
+          margin-top: 14px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .kb-file-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 10px;
+          padding: 10px 12px;
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          background: rgba(255,255,255,0.02);
+        }
+        .kb-file-main {
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+        }
+        .kb-file-main strong {
+          font-size: 0.9rem;
+          font-weight: 600;
+        }
+        .kb-file-main span {
+          font-size: 0.75rem;
+          color: var(--text-gray);
+        }
         .list-empty { color: var(--text-gray); padding: 20px; text-align: center; display: flex; gap: 8px; justify-content: center; }
         .admin-call-modal-overlay {
           position: fixed;
