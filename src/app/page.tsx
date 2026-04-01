@@ -118,8 +118,12 @@ const ECHO_MODEL_OPTIONS = [
   { id: "tts/echo_turbo-v2.5", label: TTS_MODEL_LABELS.turbo },
 ] as const;
 const DEFAULT_ECHO_MODEL = ECHO_MODEL_OPTIONS[0].id;
-const WEB_CALL_RING_SRC = "/audio/web-call-ring.mp3";
+const WEB_CALL_RING_SRC = "/audio/webcall-ring.mp3";
 const WEB_CALL_PICKUP_DELAY_MS = 2200;
+const DEFAULT_PHONE_OPTIONS = [
+  { id: "b05646d2-9c25-45fc-8862-b2203544afd2", number: "+1 (844) 756 0329", name: "Default US" },
+  { id: "31272481-96ff-4c24-82c8-1f5f655c3a7f", number: "+1 (844) 935 0977", name: "Default US 2" },
+];
 
 function sanitizeProviderBranding(message: string) {
   return message.replace(/elevenlabs|11labs|vapi/gi, "Eburon AI");
@@ -602,13 +606,22 @@ export default function Dashboard() {
       const res = await authedFetch('/api/orbit/phone-numbers', { cache: 'no-store' });
       const data = await res.json();
       if (res.ok && Array.isArray(data)) {
-        setAvailablePhoneNumbers(data);
-        if (data.length > 0) {
-          setSelectedAgentPhoneNumberId((prev) => prev || data[0].id);
+        const merged = [...DEFAULT_PHONE_OPTIONS, ...data]
+          .filter((pn) => pn && typeof pn.id === 'string')
+          .reduce<{ id: string; number?: string; name?: string }[]>((acc, pn) => {
+            if (acc.some((x) => x.id === pn.id)) return acc;
+            acc.push({ id: pn.id, number: pn.number, name: pn.name });
+            return acc;
+          }, []);
+        setAvailablePhoneNumbers(merged);
+        if (merged.length > 0) {
+          setSelectedAgentPhoneNumberId((prev) => prev || merged[0].id);
         }
       }
     } catch (error) {
       console.error('Failed to fetch phone numbers:', error);
+      setAvailablePhoneNumbers(DEFAULT_PHONE_OPTIONS);
+      setSelectedAgentPhoneNumberId((prev) => prev || DEFAULT_PHONE_OPTIONS[0].id);
     }
   }, [authedFetch]);
 
