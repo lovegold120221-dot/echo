@@ -581,17 +581,46 @@ export default function Dashboard() {
   ];
 
   const loadVoicesAndModels = useCallback(async () => {
-    // Only fetch VAPI voices
-    const vapiVoices = await authedFetch("/api/orbit/voices").then(r => r.json()).catch(() => []);
+    // Fetch both ElevenLabs and VAPI voices
+    const [elevenRes, vapiRes] = await Promise.all([
+      authedFetch("/api/echo/voices").then(r => r.json()).catch(() => []),
+      authedFetch("/api/orbit/voices").then(r => r.json()).catch(() => []),
+    ]);
 
-    // Map VAPI voices to remove provider branding
-    const cleanedVoices = (Array.isArray(vapiVoices) ? vapiVoices : []).map((v) => ({
-      ...v,
-      provider: undefined // Remove provider branding
-    }));
+    const elevenVoices = Array.isArray(elevenRes) ? elevenRes : [];
+    const vapiVoices = Array.isArray(vapiRes) ? vapiRes : [];
 
-    setVoices(cleanedVoices as unknown as Voice[]);
-    if (cleanedVoices.length > 0 && !selectedVoice) setSelectedVoice((cleanedVoices[0] as Voice).voice_id);
+    // Merge voices, preferring ElevenLabs voices for TTS (they have better quality)
+    // Remove duplicates based on voice_id
+    const seenIds = new Set<string>();
+    const mergedVoices: Voice[] = [];
+
+    // Add ElevenLabs voices first (primary for TTS)
+    elevenVoices.forEach((v: Voice) => {
+      if (v?.voice_id && !seenIds.has(v.voice_id)) {
+        seenIds.add(v.voice_id);
+        mergedVoices.push({
+          ...v,
+          labels: { ...v.labels, source: "elevenlabs" }
+        });
+      }
+    });
+
+    // Add VAPI voices that aren't duplicates
+    vapiVoices.forEach((v: Voice) => {
+      if (v?.voice_id && !seenIds.has(v.voice_id)) {
+        seenIds.add(v.voice_id);
+        mergedVoices.push({
+          ...v,
+          labels: { ...v.labels, source: "vapi" }
+        });
+      }
+    });
+
+    setVoices(mergedVoices);
+    if (mergedVoices.length > 0 && !selectedVoice) {
+      setSelectedVoice(mergedVoices[0].voice_id);
+    }
 
     try {
       const res = await authedFetch("/api/echo/models");

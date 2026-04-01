@@ -101,7 +101,8 @@ export type VapiVoice = {
 
 export async function fetchVoices(): Promise<VapiVoice[]> {
   if (!getOrbitSecret()) return [];
-  const raw = await orbitCoreRequest('GET', '/voice-library/vapi');
+  // Fetch all voices from the voice library (includes VAPI, 11labs, and other providers)
+  const raw = await orbitCoreRequest('GET', '/voice-library');
   if (Array.isArray(raw)) {
     // Filter out deleted voices and map to expected format
     return raw

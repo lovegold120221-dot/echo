@@ -136,30 +136,20 @@ export default function AdminPage() {
 
   const loadVoices = useCallback(async () => {
     try {
-      const [vapiRes, elevenRes] = await Promise.all([
-        authedFetch("/api/orbit/voices"),
-        authedFetch("/api/echo/voices"),
-      ]);
-
-      const vapi = await vapiRes.json();
-      const eleven = await elevenRes.json();
+      const res = await authedFetch("/api/orbit/voices");
+      const voices = await res.json();
 
       const sanitizeVoiceBrand = (name: string) => name.replace(/elevenlabs|11labs|vapi/gi, "Eburon AI");
       const opts: VoiceOption[] = [];
-      if (Array.isArray(eleven)) {
-        eleven.forEach((v) => {
+      if (Array.isArray(voices)) {
+        voices.forEach((v) => {
           if (v?.voice_id && v?.name) {
+            // Use provider from voice data (11labs, vapi, etc.)
+            const provider = v.provider === "11labs" ? "11labs" : "vapi";
             opts.push({
               label: `Eburon Voice - ${sanitizeVoiceBrand(String(v.name))}`,
-              value: `11labs:${v.voice_id}`,
+              value: `${provider}:${v.voice_id}`,
             });
-          }
-        });
-      }
-      if (Array.isArray(vapi)) {
-        vapi.forEach((v) => {
-          if (v?.voice_id && v?.name) {
-            opts.push({ label: `Eburon Voice - ${sanitizeVoiceBrand(String(v.name))}`, value: `vapi:${v.voice_id}` });
           }
         });
       }
@@ -688,8 +678,8 @@ export default function AdminPage() {
                 <input type="text" value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="e.g. Dutch Support" />
               </div>
               <div className="input-group">
-                <label>Phone Number to Use</label>
-                <select value={formPhone} onChange={(e) => setFormPhone(e.target.value)}>
+                <label htmlFor="phone-number">Phone Number to Use</label>
+                <select id="phone-number" value={formPhone} onChange={(e) => setFormPhone(e.target.value)} title="Select phone number">
                   <option value="">Select phone number</option>
                   {formPhone && !phoneOptions.some((pn) => pn.id === formPhone) && (
                     <option value={formPhone}>{formPhone}</option>
@@ -702,8 +692,8 @@ export default function AdminPage() {
                 </select>
               </div>
               <div className="input-group">
-                <label>Base Language</label>
-                <select value={formLang} onChange={(e) => setFormLang(e.target.value)}>
+                <label htmlFor="base-language">Base Language</label>
+                <select id="base-language" value={formLang} onChange={(e) => setFormLang(e.target.value)} title="Select base language">
                   <option value="en">English</option>
                   <option value="nl">Dutch (Nederlands)</option>
                   <option value="fr">French</option>
@@ -711,12 +701,12 @@ export default function AdminPage() {
                 </select>
               </div>
               <div className="input-group">
-                <label>Agent ID (Internal)</label>
-                <input type="text" readOnly value={isNew ? "(new)" : selectedId} className="readonly" />
+                <label htmlFor="agent-id">Agent ID (Internal)</label>
+                <input id="agent-id" type="text" readOnly value={isNew ? "(new)" : selectedId} className="readonly" title="Agent ID (read-only)" />
               </div>
               <div className="input-group full-width">
-                <label>Voice</label>
-                <select value={formVoice} onChange={(e) => setFormVoice(e.target.value)}>
+                <label htmlFor="voice">Voice</label>
+                <select id="voice" value={formVoice} onChange={(e) => setFormVoice(e.target.value)} title="Select voice">
                   <option value="">Select voice</option>
                   {voiceOptions.map((v) => (
                     <option key={v.value} value={v.value}>
@@ -732,8 +722,8 @@ export default function AdminPage() {
             <h3>Behavioral Design</h3>
             <div className="grid">
               <div className="input-group">
-                <label>First to Talk</label>
-                <select value={formFirstTalk} onChange={(e) => setFormFirstTalk(e.target.value)}>
+                <label htmlFor="first-to-talk">First to Talk</label>
+                <select id="first-to-talk" value={formFirstTalk} onChange={(e) => setFormFirstTalk(e.target.value)} title="Select who speaks first">
                   <option value="Agent">Agent (Outbound/Direct)</option>
                   <option value="User">User (Inbound/Wait)</option>
                 </select>
