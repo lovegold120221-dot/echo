@@ -12,6 +12,7 @@ const supabaseAnonKey =
 let supabaseClient: SupabaseClient | {
   auth: {
     getSession: () => Promise<{ data: { session: null }; error: null }>
+    refreshSession: () => Promise<{ data: { session: null }; error: null }>
     onAuthStateChange: () => { data: { subscription: null } }
     signInWithPassword: () => Promise<{ error: { message: string } }>
     signUp: () => Promise<{ error: { message: string } }>
@@ -42,6 +43,7 @@ if (!isConfigured) {
   supabaseClient = {
     auth: {
       getSession: () => Promise.resolve({ data: { session: null }, error: null }),
+      refreshSession: () => Promise.resolve({ data: { session: null }, error: null }),
       onAuthStateChange: () => ({ data: { subscription: null } }),
       signInWithPassword: () => Promise.resolve({ error: { message: 'Authentication is not configured' } }),
       signUp: () => Promise.resolve({ error: { message: 'Authentication is not configured' } }),

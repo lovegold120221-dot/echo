@@ -97,7 +97,14 @@ export default function AdminPage() {
     const {
       data: { session },
     } = await supabase.auth.getSession();
-    return session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+
+    if (session?.access_token) {
+      return { Authorization: `Bearer ${session.access_token}` };
+    }
+
+    const refreshed = await supabase.auth.refreshSession().catch(() => null);
+    const refreshedToken = refreshed?.data?.session?.access_token;
+    return refreshedToken ? { Authorization: `Bearer ${refreshedToken}` } : {};
   }, []);
 
   const authedFetch = useCallback(
@@ -202,6 +209,9 @@ export default function AdminPage() {
         const query = assistantId ? `?assistantId=${encodeURIComponent(assistantId)}` : "";
         const res = await authedFetch(`/api/admin-agents/knowledge${query}`, { cache: "no-store" });
         const data = await res.json().catch(() => []);
+        if (res.status === 401) {
+          throw new Error("Unauthorized. Please sign in again on this Supabase project.");
+        }
         if (!res.ok) {
           throw new Error(typeof data?.error === "string" ? data.error : "Failed to load knowledge files");
         }
@@ -404,6 +414,9 @@ export default function AdminPage() {
             body: formData,
           });
           const data = await res.json().catch(() => ({}));
+          if (res.status === 401) {
+            throw new Error("Unauthorized. Please sign in again on this Supabase project.");
+          }
           if (!res.ok) {
             throw new Error(typeof data?.error === "string" ? data.error : `Failed to upload ${file.name}`);
           }
@@ -431,6 +444,9 @@ export default function AdminPage() {
           body: JSON.stringify({ id }),
         });
         const data = await res.json().catch(() => ({}));
+        if (res.status === 401) {
+          throw new Error("Unauthorized. Please sign in again on this Supabase project.");
+        }
         if (!res.ok) {
           throw new Error(typeof data?.error === "string" ? data.error : "Failed to delete knowledge file");
         }
@@ -742,7 +758,7 @@ export default function AdminPage() {
             <label className="kb-zone" htmlFor="adminKnowledgeFiles">
               <div style={{ fontSize: "1.5rem", marginBottom: 10 }}>📄</div>
               <div style={{ fontWeight: 600 }}>{isUploadingKnowledge ? "Uploading..." : "Upload Knowledge Files"}</div>
-              <div style={{ color: "#888", fontSize: "0.75rem", marginTop: 4 }}>PDF, TXT, CSV, DOCX, JSON, XML, YAML, LOG (Max 300KB)</div>
+              <div style={{ color: "#888", fontSize: "0.75rem", marginTop: 4 }}>PDF, TXT, CSV, DOCX, JSON, XML, YAML, LOG (Max 1GB)</div>
             </label>
             <input
               id="adminKnowledgeFiles"

@@ -458,7 +458,12 @@ export default function Dashboard() {
 
   const getAuthHeaders = useCallback(async (): Promise<Record<string, string>> => {
     const { data: { session } } = await supabase.auth.getSession();
-    return session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+    if (session?.access_token) {
+      return { Authorization: `Bearer ${session.access_token}` };
+    }
+    const refreshed = await supabase.auth.refreshSession().catch(() => null);
+    const refreshedToken = refreshed?.data?.session?.access_token;
+    return refreshedToken ? { Authorization: `Bearer ${refreshedToken}` } : {};
   }, []);
 
   const authedFetch = useCallback(async (input: RequestInfo | URL, init: RequestInit = {}) => {
@@ -2645,68 +2650,7 @@ export default function Dashboard() {
 
           {activeTab === "pane-Create" && (
             <div className="tab-pane active Create-pane">
-              {/* Step 1: Describe your agent (voice or type) */}
-              <div ref={createGenerateSectionRef} className="Create-hero">
-                <div className="Create-hero-label">Describe your agent</div>
-                <div className="Create-input-wrap">
-                  <textarea
-                    placeholder="Describe what your agent should do... (e.g. 'A friendly support rep for a pizza shop')"
-                    value={agentVoiceDescription}
-                    onChange={(e) => setAgentVoiceDescription(e.target.value)}
-                    className="Create-textarea"
-                    disabled={isAgentVoiceRecording}
-                  />
-                </div>
-                <div className="flex items-center justify-between mt-3 gap-4 flex-wrap">
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      className="btn primary text-2xs flex items-center gap-2"
-                      onClick={handleAgentVoiceGenerate}
-                      disabled={isAgentVoiceGenerating || !agentVoiceDescription.trim()}
-                    >
-                      {isAgentVoiceGenerating && <Loader2 size={16} className="animate-spin" />}
-                      {isAgentVoiceGenerating ? "Generating..." : "Generate now"}
-                    </button>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {isAgentVoiceRecording && (
-                      <div className="flex items-end gap-1 h-6" aria-hidden>
-                        {Array.from({ length: 12 }).map((_, i) => {
-                          const h = Math.max(4, (agentVoiceLevel / 100) * 20 * (0.6 + 0.4 * Math.sin((i + agentVoiceLevel) * 0.3)));
-                          const heightClass = h >= 18 ? 'h-5' : h >= 14 ? 'h-4' : h >= 10 ? 'h-3' : h >= 6 ? 'h-2' : 'h-1';
-                          return (
-                            <div
-                              key={i}
-                              className={`w-1.5 rounded-full bg-lime/90 transition-all duration-75 ${heightClass}`}
-                            />
-                          );
-                        })}
-                      </div>
-                    )}
-                    <span className="text-2xs text-muted min-w-[4rem]">
-                      {isAgentVoiceRecording
-                        ? `${Math.floor(agentVoiceTimerSeconds / 60)}:${String(agentVoiceTimerSeconds % 60).padStart(2, "0")}`
-                        : ""}
-                    </span>
-                    <button
-                      type="button"
-                      className={`p-2.5 rounded-xl transition-all shrink-0 ${isAgentVoiceRecording ? "bg-red-500/20 text-red-400" : "bg-white/5 hover:bg-limeDim text-lime border border-white/10"}`}
-                      onClick={handleAgentVoiceRecord}
-                      title={isAgentVoiceRecording ? "Click to stop (or wait for 2 min)" : "Record with mic (2 min max)"}
-                    >
-                      <Mic size={20} />
-                    </button>
-                  </div>
-                </div>
-                {agentVoiceStatus && (agentVoiceStatus.startsWith("Error") || agentVoiceStatus.includes("not supported")) && (
-                  <div className="mt-3 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-2xs text-bad">
-                    {agentVoiceStatus}
-                  </div>
-                )}
-              </div>
-
-              {/* Step 2: Create agent (prompt input, dialer) */}
+              {/* Create agent (prompt input, dialer) */}
               <div className="Create-divider">
                 <div className="Create-divider-title">Create agent</div>
                 <div className="Create-actions-row">
