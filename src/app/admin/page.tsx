@@ -9,6 +9,7 @@ import {
   Copy,
   Save,
   Loader2,
+  Zap,
   Phone,
   PhoneOff,
   X,
@@ -324,6 +325,9 @@ export default function AdminPage() {
   const [testCallStatus, setTestCallStatus] = useState<"idle" | "loading" | "active">("idle");
   const [testCallTranscript, setTestCallTranscript] = useState<{ text: string; role: "user" | "agent" }[]>([]);
   const [testCallLive, setTestCallLive] = useState<{ user: string; agent: string }>({ user: "", agent: "" });
+  const [isDeploying, setIsDeploying] = useState(false);
+  const [deployStatus, setDeployStatus] = useState("");
+  const [deployedAssistantId, setDeployedAssistantId] = useState<string | null>(null);
   const pendingTestCallStartRef = useRef<symbol | null>(null);
 
   const orbit = useMemo(() => {
@@ -424,11 +428,23 @@ export default function AdminPage() {
     }
   }, [authedFetch]);
 
+  const loadDeployedAssistant = useCallback(async () => {
+    try {
+      const res = await authedFetch("/api/user-assistant", { cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return;
+      setDeployedAssistantId(typeof data?.assistantId === "string" ? data.assistantId : null);
+    } catch {
+      // no-op
+    }
+  }, [authedFetch]);
+
   useEffect(() => {
     loadAgents();
     loadVoices();
     loadPhoneNumbers();
-  }, [loadAgents, loadVoices, loadPhoneNumbers]);
+    loadDeployedAssistant();
+  }, [loadAgents, loadVoices, loadPhoneNumbers, loadDeployedAssistant]);
 
   useEffect(() => {
     if (isNew && !formPhone.trim() && phoneOptions.length > 0) {
@@ -581,6 +597,29 @@ export default function AdminPage() {
       alert(sanitizeProviderBranding(err instanceof Error ? err.message : "Failed to delete agent"));
     }
   };
+
+  const deployAgentToMainApp = useCallback(async () => {
+    if (!selectedId || isNew) return;
+    setIsDeploying(true);
+    setDeployStatus("");
+    try {
+      const res = await authedFetch("/api/user-assistant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assistantId: selectedId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(typeof data?.error === "string" ? data.error : "Failed to deploy agent");
+      }
+      setDeployedAssistantId(selectedId);
+      setDeployStatus("Deployed to main app.");
+    } catch (err) {
+      setDeployStatus(`Error: ${sanitizeProviderBranding(err instanceof Error ? err.message : "Failed to deploy")}`);
+    } finally {
+      setIsDeploying(false);
+    }
+  }, [authedFetch, isNew, selectedId]);
 
   const closeTestCall = useCallback(() => {
     pendingTestCallStartRef.current = null;
@@ -739,8 +778,22 @@ export default function AdminPage() {
           <div>
             <h2 id="displayAgentName">{isNew ? "New Agent" : formName || "Agent Metadata"}</h2>
             <p id="displayAgentID">ID: {isNew ? "--" : selectedId || "--"}</p>
+            {!isNew && selectedId && deployedAssistantId === selectedId && (
+              <p className="deploy-ok">Live in main app</p>
+            )}
+            {deployStatus && <p className={`deploy-status ${deployStatus.startsWith("Error") ? "error" : "ok"}`}>{deployStatus}</p>}
           </div>
           <div className="header-actions">
+            {!isNew && selectedId && (
+              <button
+                className="btn btn-deploy"
+                onClick={deployAgentToMainApp}
+                disabled={isDeploying || deployedAssistantId === selectedId}
+              >
+                {isDeploying ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
+                {deployedAssistantId === selectedId ? "Deployed" : "Deploy Agent"}
+              </button>
+            )}
             {!isNew && selectedId && (
               <button
                 className="btn btn-test-call"
@@ -1042,6 +1095,10 @@ export default function AdminPage() {
           gap: 16px;
         }
         .panel-header p { color: var(--text-gray); font-size: 0.85rem; margin-top: 4px; }
+        .deploy-ok { color: var(--accent-green) !important; font-weight: 600; }
+        .deploy-status { font-size: 0.8rem; margin-top: 6px; }
+        .deploy-status.ok { color: var(--accent-green); }
+        .deploy-status.error { color: #ff7676; }
         .header-actions { display: flex; gap: 12px; flex-wrap: wrap; }
         .btn {
           padding: 10px 20px;
@@ -1059,6 +1116,7 @@ export default function AdminPage() {
         }
         .btn-save { background: var(--accent-green); color: black; border: none; }
         .btn-clone { background: var(--card-bg); color: white; }
+        .btn-deploy { background: rgba(191,255,0,0.15); color: var(--accent-green); border: 1px solid rgba(191,255,0,0.35); }
         .btn-test-call { background: rgba(191,255,0,0.1); color: var(--accent-green); border: 1px solid rgba(191,255,0,0.3); }
         .btn-delete { background: rgba(255,68,68,0.1); color: #ff4444; border: 1px solid rgba(255,68,68,0.2); }
         .content-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 40px; }
