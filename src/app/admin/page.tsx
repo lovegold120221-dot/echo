@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Search,
   Plus,
@@ -9,7 +9,11 @@ import {
   Copy,
   Save,
   Loader2,
+  Phone,
+  PhoneOff,
+  X,
 } from "lucide-react";
+import OrbitCore from "@vapi-ai/web";
 import { supabase } from "@/lib/supabase";
 
 type Agent = {
@@ -286,6 +290,17 @@ Zulu`
   .map((lang) => lang.trim())
   .filter(Boolean);
 
+type PhoneOption = {
+  id: string;
+  number?: string;
+  name?: string;
+};
+
+const DEFAULT_PHONE_OPTIONS: PhoneOption[] = [
+  { id: "b05646d2-9c25-45fc-8862-b2203544afd2", number: "+1 (844) 756 0329", name: "Default US" },
+  { id: "31272481-96ff-4c24-82c8-1f5f655c3a7f", number: "+1 (844) 935 0977", name: "Default US 2" },
+];
+
 export default function AdminPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
@@ -304,6 +319,19 @@ export default function AdminPage() {
   const [formVoice, setFormVoice] = useState("vapi:Elliot");
 
   const [voiceOptions, setVoiceOptions] = useState<VoiceOption[]>([]);
+  const [phoneOptions, setPhoneOptions] = useState<PhoneOption[]>(DEFAULT_PHONE_OPTIONS);
+  const [isTestCallOpen, setIsTestCallOpen] = useState(false);
+  const [testCallStatus, setTestCallStatus] = useState<"idle" | "loading" | "active">("idle");
+  const [testCallTranscript, setTestCallTranscript] = useState<{ text: string; role: "user" | "agent" }[]>([]);
+  const [testCallLive, setTestCallLive] = useState<{ user: string; agent: string }>({ user: "", agent: "" });
+  const pendingTestCallStartRef = useRef<symbol | null>(null);
+
+  const orbit = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    const token = process.env.NEXT_PUBLIC_ORBIT_TOKEN || "";
+    if (!token) return null;
+    return new OrbitCore(token);
+  }, []);
 
   const getAuthHeaders = useCallback(async (): Promise<Record<string, string>> => {
     const {
@@ -348,9 +376,7 @@ export default function AdminPage() {
 
       const vapi = await vapiRes.json();
       const eleven = await elevenRes.json();
-
-      const sanitizeVoiceBrand = (name: string) =>
-        name.replace(/elevenlabs|11labs|vapi/gi, "Eburon AI");
+      const sanitizeVoiceBrand = (name: string) => name.replace(/elevenlabs|11labs|vapi/gi, "Eburon AI");
       const opts: VoiceOption[] = [];
       if (Array.isArray(eleven)) {
         eleven.forEach((v) => {
@@ -365,10 +391,7 @@ export default function AdminPage() {
       if (Array.isArray(vapi)) {
         vapi.forEach((v) => {
           if (v?.voice_id && v?.name) {
-            opts.push({
-              label: `Eburon Voice - ${sanitizeVoiceBrand(String(v.name))}`,
-              value: `vapi:${v.voice_id}`,
-            });
+            opts.push({ label: `Eburon Voice - ${sanitizeVoiceBrand(String(v.name))}`, value: `vapi:${v.voice_id}` });
           }
         });
       }
@@ -378,10 +401,40 @@ export default function AdminPage() {
     }
   }, [authedFetch]);
 
+  const loadPhoneNumbers = useCallback(async () => {
+    try {
+      const res = await authedFetch("/api/orbit/phone-numbers", { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok || !Array.isArray(data)) {
+        setPhoneOptions(DEFAULT_PHONE_OPTIONS);
+        return;
+      }
+
+      const merged = [...DEFAULT_PHONE_OPTIONS, ...data]
+        .filter((pn) => pn && typeof pn.id === "string")
+        .reduce<PhoneOption[]>((acc, pn) => {
+          if (acc.some((x) => x.id === pn.id)) return acc;
+          acc.push({ id: pn.id, number: pn.number, name: pn.name });
+          return acc;
+        }, []);
+
+      setPhoneOptions(merged);
+    } catch {
+      setPhoneOptions(DEFAULT_PHONE_OPTIONS);
+    }
+  }, [authedFetch]);
+
   useEffect(() => {
     loadAgents();
     loadVoices();
-  }, [loadAgents, loadVoices]);
+    loadPhoneNumbers();
+  }, [loadAgents, loadVoices, loadPhoneNumbers]);
+
+  useEffect(() => {
+    if (isNew && !formPhone.trim() && phoneOptions.length > 0) {
+      setFormPhone(phoneOptions[0].id);
+    }
+  }, [isNew, formPhone, phoneOptions]);
 
   const loadAgentDetails = useCallback(
     async (id: string) => {
@@ -470,9 +523,30 @@ export default function AdminPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Failed to save agent");
 
+      const savedAssistantId = (typeof data?.id === "string" ? data.id : selectedId) || "";
+      if (savedAssistantId) {
+        const syncRes = await authedFetch("/api/admin-agents", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            assistantId: savedAssistantId,
+            name: formName.trim(),
+            phoneNumberId: formPhone.trim() || null,
+            voiceProvider: provider || null,
+            voiceId: voiceId || null,
+            language: formLang || "multilingual",
+            firstMessage: formIntro.trim() || null,
+            systemPrompt: formPrompt.trim() || null,
+          }),
+        });
+        if (!syncRes.ok) {
+          const syncErr = await syncRes.json().catch(() => ({}));
+          throw new Error(syncErr?.error || "Saved assistant but failed to sync admin record");
+        }
+      }
+
       await loadAgents();
-      const newId = data?.id;
-      if (typeof newId === "string") setSelectedId(newId);
+      if (savedAssistantId) setSelectedId(savedAssistantId);
       setIsNew(false);
       alert(isNew ? "Agent created" : "Agent updated");
     } catch (err) {
@@ -488,6 +562,17 @@ export default function AdminPage() {
     try {
       const res = await authedFetch(`/api/orbit/assistants/${selectedId}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Failed to delete agent");
+
+      const syncRes = await authedFetch("/api/admin-agents", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assistantId: selectedId }),
+      });
+      if (!syncRes.ok) {
+        const syncErr = await syncRes.json().catch(() => ({}));
+        console.warn("[admin-agents delete]", syncErr?.error || "Failed to remove admin record");
+      }
+
       await loadAgents();
       const next = agents.filter((a) => a.id !== selectedId);
       if (next.length > 0) setSelectedId(next[0].id);
@@ -496,6 +581,97 @@ export default function AdminPage() {
       alert(sanitizeProviderBranding(err instanceof Error ? err.message : "Failed to delete agent"));
     }
   };
+
+  const closeTestCall = useCallback(() => {
+    pendingTestCallStartRef.current = null;
+    setTestCallStatus("idle");
+    setIsTestCallOpen(false);
+    setTestCallTranscript([]);
+    setTestCallLive({ user: "", agent: "" });
+  }, []);
+
+  const startTestCall = useCallback(async () => {
+    if (!selectedId || isNew) return;
+    if (!orbit) {
+      alert("Voice call engine not initialized. Check your API token.");
+      return;
+    }
+
+    setIsTestCallOpen(true);
+    setTestCallStatus("loading");
+    setTestCallTranscript([]);
+    setTestCallLive({ user: "", agent: "" });
+
+    try {
+      const startToken = Symbol("admin-test-call-start");
+      pendingTestCallStartRef.current = startToken;
+      await new Promise((resolve) => window.setTimeout(resolve, 350));
+      if (pendingTestCallStartRef.current !== startToken) return;
+      await orbit.start(selectedId);
+    } catch (error) {
+      console.error("Failed to start admin test call:", error);
+      closeTestCall();
+      alert("Failed to connect test call.");
+    }
+  }, [closeTestCall, isNew, orbit, selectedId]);
+
+  useEffect(() => {
+    if (!orbit) return;
+
+    const onCallStart = () => {
+      pendingTestCallStartRef.current = null;
+      setTestCallStatus("active");
+    };
+
+    const onCallEnd = () => {
+      closeTestCall();
+    };
+
+    const onError = (error: unknown) => {
+      console.error("Admin test call error:", error);
+      closeTestCall();
+    };
+
+    const onMessage = (message: { type: string; transcriptType?: string; transcript?: string; role?: string }) => {
+      if (message.type !== "transcript" || !message.transcript || !message.role) return;
+
+      const role = message.role === "user" ? "user" : "agent";
+      const text = message.transcript.trim();
+      if (!text) return;
+
+      const isInterim = message.transcriptType === "interim" || message.transcriptType === "partial";
+      if (isInterim) {
+        setTestCallLive((prev) => ({ ...prev, [role]: text }));
+        return;
+      }
+
+      setTestCallTranscript((prev) => {
+        const last = prev[prev.length - 1];
+        if (last && last.role === role && last.text === text) return prev;
+        return [...prev, { role, text }];
+      });
+      setTestCallLive((prev) => ({ ...prev, [role]: "" }));
+    };
+
+    orbit.on("call-start", onCallStart);
+    orbit.on("call-end", onCallEnd);
+    orbit.on("error", onError);
+    orbit.on("message", onMessage);
+
+    return () => {
+      orbit.off("call-start", onCallStart);
+      orbit.off("call-end", onCallEnd);
+      orbit.off("error", onError);
+      orbit.off("message", onMessage);
+    };
+  }, [closeTestCall, orbit]);
+
+  useEffect(() => {
+    return () => {
+      pendingTestCallStartRef.current = null;
+      orbit?.stop();
+    };
+  }, [orbit]);
 
   return (
     <div className="admin-shell">
@@ -566,6 +742,15 @@ export default function AdminPage() {
           </div>
           <div className="header-actions">
             {!isNew && selectedId && (
+              <button
+                className="btn btn-test-call"
+                onClick={startTestCall}
+                disabled={testCallStatus === "loading"}
+              >
+                {testCallStatus === "loading" ? <Loader2 size={14} className="animate-spin" /> : <Phone size={14} />} Test Call
+              </button>
+            )}
+            {!isNew && selectedId && (
               <button className="btn btn-delete" onClick={deleteAgent}>
                 <Trash2 size={14} /> Delete
               </button>
@@ -591,7 +776,17 @@ export default function AdminPage() {
               </div>
               <div className="input-group">
                 <label>Phone Number to Use</label>
-                <input type="text" value={formPhone} onChange={(e) => setFormPhone(e.target.value)} placeholder="phone number id" />
+                <select value={formPhone} onChange={(e) => setFormPhone(e.target.value)}>
+                  <option value="">Select phone number</option>
+                  {formPhone && !phoneOptions.some((pn) => pn.id === formPhone) && (
+                    <option value={formPhone}>{formPhone}</option>
+                  )}
+                  {phoneOptions.map((pn) => (
+                    <option key={pn.id} value={pn.id}>
+                      {pn.number || pn.name || pn.id}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="input-group">
                 <label>Base Language</label>
@@ -657,6 +852,73 @@ export default function AdminPage() {
           </div>
         </div>
       </main>
+
+      {isTestCallOpen && (
+        <div className="admin-call-modal-overlay" role="dialog" aria-modal="true">
+          <div className="admin-call-modal">
+            <div className="admin-call-modal-header">
+              <div>
+                <strong>Test Call</strong>
+                <p>{formName || selectedId}</p>
+              </div>
+              <button
+                className="btn admin-call-close"
+                onClick={() => {
+                  pendingTestCallStartRef.current = null;
+                  orbit?.stop();
+                  closeTestCall();
+                }}
+              >
+                <X size={14} /> Close
+              </button>
+            </div>
+
+            <div className="admin-call-status">
+              {testCallStatus === "loading" ? "Connecting..." : testCallStatus === "active" ? "Live" : "Idle"}
+            </div>
+
+            <div className="admin-call-transcript">
+              {testCallTranscript.length === 0 && !testCallLive.user && !testCallLive.agent ? (
+                <div className="admin-call-empty">Waiting for transcript...</div>
+              ) : (
+                <>
+                  {testCallTranscript.map((item, idx) => (
+                    <div key={`${item.role}-${idx}`} className={`admin-line ${item.role}`}>
+                      <span>{item.role === "user" ? "You" : "Agent"}</span>
+                      <p>{item.text}</p>
+                    </div>
+                  ))}
+                  {testCallLive.user && (
+                    <div className="admin-line user interim">
+                      <span>You</span>
+                      <p>{testCallLive.user}</p>
+                    </div>
+                  )}
+                  {testCallLive.agent && (
+                    <div className="admin-line agent interim">
+                      <span>Agent</span>
+                      <p>{testCallLive.agent}</p>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div className="admin-call-actions">
+              <button
+                className="btn btn-delete"
+                onClick={() => {
+                  pendingTestCallStartRef.current = null;
+                  orbit?.stop();
+                  closeTestCall();
+                }}
+              >
+                <PhoneOff size={14} /> End Call
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style jsx global>{`
         .admin-shell {
@@ -797,6 +1059,7 @@ export default function AdminPage() {
         }
         .btn-save { background: var(--accent-green); color: black; border: none; }
         .btn-clone { background: var(--card-bg); color: white; }
+        .btn-test-call { background: rgba(191,255,0,0.1); color: var(--accent-green); border: 1px solid rgba(191,255,0,0.3); }
         .btn-delete { background: rgba(255,68,68,0.1); color: #ff4444; border: 1px solid rgba(255,68,68,0.2); }
         .content-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 40px; }
         .form-section { margin-bottom: 40px; max-width: 900px; }
@@ -840,6 +1103,92 @@ export default function AdminPage() {
         }
         .kb-zone:hover { border-color: var(--accent-green); background: rgba(191,255,0,0.02); }
         .list-empty { color: var(--text-gray); padding: 20px; text-align: center; display: flex; gap: 8px; justify-content: center; }
+        .admin-call-modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.65);
+          display: grid;
+          place-items: center;
+          padding: 20px;
+          z-index: 50;
+        }
+        .admin-call-modal {
+          width: min(760px, 100%);
+          max-height: 82dvh;
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+          background: #111;
+          border: 1px solid var(--border);
+          border-radius: 16px;
+        }
+        .admin-call-modal-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 12px;
+          padding: 16px 18px;
+          border-bottom: 1px solid var(--border);
+        }
+        .admin-call-modal-header p {
+          margin-top: 4px;
+          color: var(--text-gray);
+          font-size: 0.8rem;
+        }
+        .admin-call-close {
+          padding: 8px 12px;
+        }
+        .admin-call-status {
+          padding: 10px 18px;
+          font-size: 0.8rem;
+          color: var(--text-gray);
+          border-bottom: 1px solid var(--border);
+        }
+        .admin-call-transcript {
+          flex: 1;
+          overflow-y: auto;
+          padding: 16px 18px;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        .admin-call-empty {
+          color: var(--text-gray);
+          font-size: 0.85rem;
+        }
+        .admin-line {
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          padding: 10px 12px;
+          background: #171717;
+        }
+        .admin-line.user {
+          border-color: rgba(191,255,0,0.35);
+          background: rgba(191,255,0,0.08);
+        }
+        .admin-line span {
+          display: block;
+          font-size: 0.72rem;
+          color: var(--text-gray);
+          margin-bottom: 4px;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+        }
+        .admin-line p {
+          margin: 0;
+          font-size: 0.9rem;
+          line-height: 1.4;
+          white-space: pre-wrap;
+        }
+        .admin-line.interim {
+          opacity: 0.8;
+        }
+        .admin-call-actions {
+          padding: 14px 18px;
+          border-top: 1px solid var(--border);
+          display: flex;
+          justify-content: flex-end;
+        }
         @media (max-width: 1024px) {
           .admin-shell { flex-direction: column; padding: 10px; }
           .sidebar { width: 100%; max-height: 300px; }
