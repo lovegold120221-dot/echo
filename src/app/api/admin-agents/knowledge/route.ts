@@ -5,7 +5,7 @@ import { uploadFile } from '@/lib/services/orbit';
 export const dynamic = 'force-dynamic';
 
 const BUCKET = 'admin-agent-kb';
-const MAX_FILE_BYTES = 300 * 1024;
+const MAX_FILE_BYTES = 1024 * 1024 * 1024;
 
 const ACCEPTED_TYPES = [
   'text/plain',
@@ -112,7 +112,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
     if (file.size > MAX_FILE_BYTES) {
-      return NextResponse.json({ error: 'File too large. Keep files under 300KB.' }, { status: 400 });
+      return NextResponse.json({ error: 'File too large. Keep files under 1GB.' }, { status: 400 });
     }
     if (!isAllowedFile(file)) {
       return NextResponse.json({ error: `Unsupported file type. Use: ${ALLOWED_EXTS.join(', ')}` }, { status: 400 });
