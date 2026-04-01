@@ -410,13 +410,10 @@ export async function createOutboundCall(params: {
   customerNumber: string;
   phoneNumberId?: string;
 }) {
-  let phoneNumberId = params.phoneNumberId?.trim();
-  if (!phoneNumberId) {
-    phoneNumberId = (process.env.PHONE_NUMBER_ID || process.env.VAPI_PHONE_NUMBER_ID || '').trim();
-  }
+  const phoneNumberId = params.phoneNumberId?.trim();
   if (!phoneNumberId) {
     throw new Error(
-      'Missing PHONE_NUMBER_ID. Add a phone number ID to .env.local for outbound calls, or provision one per agent.'
+      'Missing phoneNumberId. Assign a phone number to the assistant or pass one in the call request.'
     );
   }
   const e164 = params.customerNumber.startsWith('+')

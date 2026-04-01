@@ -593,9 +593,25 @@ export default function Dashboard() {
     }
   }, [authedFetch, selectedVoice]);
 
+  const loadPhoneNumbers = useCallback(async () => {
+    try {
+      const res = await authedFetch('/api/orbit/phone-numbers', { cache: 'no-store' });
+      const data = await res.json();
+      if (res.ok && Array.isArray(data)) {
+        setAvailablePhoneNumbers(data);
+        if (data.length > 0) {
+          setSelectedAgentPhoneNumberId((prev) => prev || data[0].id);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch phone numbers:', error);
+    }
+  }, [authedFetch]);
+
   useEffect(() => {
     loadVoicesAndModels();
-  }, [loadVoicesAndModels]);
+    loadPhoneNumbers();
+  }, [loadVoicesAndModels, loadPhoneNumbers]);
 
   const [sttFile, setSttFile] = useState<File | null>(null);
   const [sttStatus, setSttStatus] = useState("");
@@ -957,6 +973,8 @@ export default function Dashboard() {
   const [agentStatus, setAgentStatus] = useState("");
   const [isCreatingAgent, setIsCreatingAgent] = useState(false);
   const [isDeletingAgent, setIsDeletingAgent] = useState<string | null>(null);
+  const [availablePhoneNumbers, setAvailablePhoneNumbers] = useState<{ id: string; number?: string; name?: string }[]>([]);
+  const [selectedAgentPhoneNumberId, setSelectedAgentPhoneNumberId] = useState("");
 
   // Create-from-scratch form (beside iPhone dialer)
   const [agentLanguage, setAgentLanguage] = useState("multilingual");
@@ -1627,6 +1645,7 @@ export default function Dashboard() {
         language: agentLanguage,
         voice,
       };
+      if (selectedAgentPhoneNumberId) body.phoneNumberId = selectedAgentPhoneNumberId;
       if (isUpdate) body.assistantId = userAssistantId;
       if (agentKnowledgeFiles.length > 0) {
         body.fileIds = agentKnowledgeFiles.map((f) => f.id);
@@ -1687,6 +1706,8 @@ export default function Dashboard() {
       } else {
         setAgentVoice("vapi:Elliot");
       }
+      const pnId = detail.phoneNumberId || detail.phoneNumber?.id;
+      if (pnId) setSelectedAgentPhoneNumberId(pnId);
       setUserAssistantId(agentId);
       setEditingAgentId(agentId);
       setActiveTab("pane-Create");
@@ -2915,6 +2936,22 @@ export default function Dashboard() {
                         {voices.map((v) => (
                           <option key={v.voice_id} value={`vapi:${v.voice_id}`}>
                             {v.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="field">
+                      <label>Phone Number</label>
+                      <select
+                        title="Select phone number for agent"
+                        value={selectedAgentPhoneNumberId}
+                        onChange={(e) => setSelectedAgentPhoneNumberId(e.target.value)}
+                        className="w-full"
+                      >
+                        <option value="">Select phone number</option>
+                        {availablePhoneNumbers.map((pn) => (
+                          <option key={pn.id} value={pn.id}>
+                            {pn.number || pn.name || pn.id}
                           </option>
                         ))}
                       </select>

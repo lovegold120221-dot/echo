@@ -11,11 +11,7 @@ async function getOrCreatePhoneNumber(assistantId: string): Promise<string | nul
     // ignore
   }
 
-  // 2. Check env
-  const envPn = (process.env.PHONE_NUMBER_ID || process.env.VAPI_PHONE_NUMBER_ID || '').trim();
-  if (envPn) return envPn;
-
-  // 3. Auto-provision a VAPI phone number
+  // 2. Auto-provision a VAPI phone number
   try {
     const result = await orbitCoreRequest('POST', '/phone-number', {
       provider: 'vonage',
@@ -44,7 +40,7 @@ export async function POST(req: Request) {
     const pnId = phoneNumberId?.trim() || await getOrCreatePhoneNumber(assistantId);
     if (!pnId) {
       return NextResponse.json(
-        { error: 'No phone number available. Please provision a phone number in VAPI dashboard or set PHONE_NUMBER_ID in .env.local' },
+        { error: 'No phone number available. Please provision a phone number in VAPI dashboard or assign one to this agent.' },
         { status: 500 }
       );
     }
