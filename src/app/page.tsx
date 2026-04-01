@@ -229,6 +229,7 @@ export default function Dashboard() {
   const [playingHistoryId, setPlayingHistoryId] = useState<string | null>(null);
   const [loadingHistoryId, setLoadingHistoryId] = useState<string | null>(null);
   const [downloadMenuId, setDownloadMenuId] = useState<string | null>(null);
+  const [generatingPreviewId, setGeneratingPreviewId] = useState<string | null>(null);
   const downloadMenuRef = useRef<HTMLDivElement>(null);
   const [docsCopyFeedback, setDocsCopyFeedback] = useState("");
   const [apiBaseUrl, setApiBaseUrl] = useState("https://your-domain.com");
@@ -953,6 +954,40 @@ export default function Dashboard() {
     audio.play();
     setCurrentAudio(audio);
   }, [currentAudio]);
+
+  const handlePlayVoicePreview = useCallback(async (voice: Voice) => {
+    // If there's an existing preview URL, play it
+    if (voice.preview_url) {
+      handlePlayPreview(voice.preview_url);
+      return;
+    }
+
+    // Otherwise, generate a TTS preview on-the-fly
+    setGeneratingPreviewId(voice.voice_id);
+    try {
+      const sampleText = "Hello! This is a preview of my voice. I hope you like how I sound.";
+      const res = await authedFetch("/api/echo/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          voiceId: voice.voice_id,
+          text: sampleText,
+          modelId: "tts/echo_flash-v2.5",
+          outputFormat: "mp3_44100_128"
+        }),
+      });
+
+      if (!res.ok) throw new Error("Failed to generate preview");
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      handlePlayPreview(url);
+    } catch (err) {
+      console.error("Failed to generate voice preview:", err);
+    } finally {
+      setGeneratingPreviewId(null);
+    }
+  }, [authedFetch, handlePlayPreview]);
 
   const handlePlayHistory = async (id: string) => {
     if (currentAudio) currentAudio.pause();
@@ -2209,16 +2244,18 @@ export default function Dashboard() {
                             {grouped[cat].map(v => (
                               <div
                                 key={v.voice_id}
-                                className={`vl-card ${currentAudio && currentAudio.src === v.preview_url ? "playing" : ""}`}
-                                onClick={() => {
-                                  if (v.preview_url) handlePlayPreview(v.preview_url);
-                                }}
+                                className={`vl-card ${currentAudio && !generatingPreviewId ? "playing" : ""} ${generatingPreviewId === v.voice_id ? "generating" : ""}`}
+                                onClick={() => handlePlayVoicePreview(v)}
                               >
                                 <div className="vl-card-avatar">
-                                  <Volume2
-                                    size={16}
-                                    className={currentAudio && currentAudio.src === v.preview_url ? "text-lime animate-pulse" : ""}
-                                  />
+                                  {generatingPreviewId === v.voice_id ? (
+                                    <Loader2 size={16} className="animate-spin text-lime" />
+                                  ) : (
+                                    <Volume2
+                                      size={16}
+                                      className={currentAudio ? "text-lime animate-pulse" : ""}
+                                    />
+                                  )}
                                 </div>
                                 <div className="vl-card-info">
                                   <div className="vl-card-name" title={v.name}>{v.name}</div>
@@ -2228,19 +2265,24 @@ export default function Dashboard() {
                                     {v.labels?.accent && v.labels?.language ? ` · ${v.labels.accent}` : ""}
                                   </div>
                                 </div>
-                                {v.preview_url && (
-                                  <button
-                                    type="button"
-                                    className="vl-card-play-btn"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handlePlayPreview(v.preview_url);
-                                    }}
-                                    title="Play Preview"
-                                  >
-                                    {currentAudio && currentAudio.src === v.preview_url ? <PhoneOff size={14} /> : <Play size={14} />}
-                                  </button>
-                                )}
+                                <button
+                                  type="button"
+                                  className="vl-card-play-btn"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handlePlayVoicePreview(v);
+                                  }}
+                                  title={v.preview_url ? "Play Preview" : "Generate Preview"}
+                                  disabled={generatingPreviewId === v.voice_id}
+                                >
+                                  {generatingPreviewId === v.voice_id ? (
+                                    <Loader2 size={14} className="animate-spin" />
+                                  ) : currentAudio ? (
+                                    <PhoneOff size={14} />
+                                  ) : (
+                                    <Play size={14} />
+                                  )}
+                                </button>
                               </div>
                             ))}
                           </div>
