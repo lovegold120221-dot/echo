@@ -27,6 +27,10 @@ type VoiceOption = {
   value: string;
 };
 
+function sanitizeProviderBranding(message: string) {
+  return message.replace(/elevenlabs|11labs|vapi/gi, "Eburon AI");
+}
+
 const EXTENDED_BASE_LANGUAGE_OPTIONS = `Dutch Flemish Native
 Abkhaz
 Acehnese
@@ -472,7 +476,7 @@ export default function AdminPage() {
       setIsNew(false);
       alert(isNew ? "Agent created" : "Agent updated");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to save agent");
+      alert(sanitizeProviderBranding(err instanceof Error ? err.message : "Failed to save agent"));
     } finally {
       setIsSaving(false);
     }
@@ -489,7 +493,7 @@ export default function AdminPage() {
       if (next.length > 0) setSelectedId(next[0].id);
       else createNewAgent();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete agent");
+      alert(sanitizeProviderBranding(err instanceof Error ? err.message : "Failed to delete agent"));
     }
   };
 

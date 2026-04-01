@@ -121,8 +121,12 @@ const DEFAULT_ECHO_MODEL = ECHO_MODEL_OPTIONS[0].id;
 const WEB_CALL_RING_SRC = "/audio/web-call-ring.mp3";
 const WEB_CALL_PICKUP_DELAY_MS = 2200;
 
+function sanitizeProviderBranding(message: string) {
+  return message.replace(/elevenlabs|11labs|vapi/gi, "Eburon AI");
+}
+
 function getTtsEnhanceErrorMessage(err: unknown) {
-  const message = err instanceof Error ? err.message : "Could not enhance.";
+  const message = sanitizeProviderBranding(err instanceof Error ? err.message : "Could not enhance.");
   if (/model .* not found/i.test(message)) {
     return "Text enhancement is unavailable because the configured local model is missing.";
   }
@@ -133,7 +137,7 @@ function getTtsEnhanceErrorMessage(err: unknown) {
 }
 
 function getFetchErrorMessage(err: unknown, fallback: string) {
-  const message = err instanceof Error ? err.message : fallback;
+  const message = sanitizeProviderBranding(err instanceof Error ? err.message : fallback);
   if (/Failed to fetch|Load failed|NetworkError/i.test(message)) {
     return "Could not reach the app server. Start `npm run dev` and reload the current localhost port.";
   }
@@ -1376,7 +1380,7 @@ export default function Dashboard() {
       setAgentKnowledgeFiles((prev) => [...prev, ...uploaded]);
       setAgentStatus(`${uploaded.length} file(s) added to knowledge base.`);
     } catch (err) {
-      setAgentStatus("Error: " + (err instanceof Error ? err.message : "Upload failed"));
+      setAgentStatus("Error: " + sanitizeProviderBranding(err instanceof Error ? err.message : "Upload failed"));
     } finally {
       setIsUploadingKnowledge(false);
       e.target.value = "";
@@ -1531,7 +1535,7 @@ export default function Dashboard() {
         });
       }, 1000);
     } catch (err) {
-      setAgentVoiceStatus("Error: " + (err instanceof Error ? err.message : "Microphone access denied"));
+      setAgentVoiceStatus("Error: " + sanitizeProviderBranding(err instanceof Error ? err.message : "Microphone access denied"));
       setIsAgentVoiceRecording(false);
     }
   }, [isAgentVoiceRecording, stopAgentVoiceRecording]);
@@ -1590,7 +1594,7 @@ export default function Dashboard() {
       setAgentStatus("Template filled. Review and adjust as needed.");
       createFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (err) {
-      setAgentVoiceStatus("Error: " + (err instanceof Error ? err.message : "Failed"));
+      setAgentVoiceStatus("Error: " + sanitizeProviderBranding(err instanceof Error ? err.message : "Failed"));
     } finally {
       setIsAgentVoiceGenerating(false);
     }
@@ -1613,7 +1617,7 @@ export default function Dashboard() {
       createFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       setTtsStatus("Template sent to Create tab.");
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed";
+      const message = sanitizeProviderBranding(err instanceof Error ? err.message : "Failed");
       setAgentVoiceStatus(`Error: ${message}`);
       setTtsStatus("Error: Could not generate template from TTS text.");
     } finally {
@@ -1681,7 +1685,7 @@ export default function Dashboard() {
       fetchAgentBases();
     } catch (error) {
       console.error(error);
-      setAgentStatus("Error: " + (error instanceof Error ? error.message : (isUpdate ? "Update failed." : "Creation failed.")));
+      setAgentStatus("Error: " + sanitizeProviderBranding(error instanceof Error ? error.message : (isUpdate ? "Update failed." : "Creation failed.")));
     } finally {
       setIsCreatingAgent(false);
     }
@@ -1714,7 +1718,7 @@ export default function Dashboard() {
       setAgentKnowledgeFiles([]);
     } catch (err) {
       console.error(err);
-      setAgentStatus("Error: " + (err instanceof Error ? err.message : "Failed to load agent"));
+      setAgentStatus("Error: " + sanitizeProviderBranding(err instanceof Error ? err.message : "Failed to load agent"));
     } finally {
       setIsCreatingAgent(false);
     }
@@ -1738,7 +1742,7 @@ export default function Dashboard() {
       fetchAgentBases();
     } catch (err) {
       console.error(err);
-      setAgentStatus("Error: " + (err instanceof Error ? err.message : "Failed to delete agent"));
+      setAgentStatus("Error: " + sanitizeProviderBranding(err instanceof Error ? err.message : "Failed to delete agent"));
     } finally {
       setIsDeletingAgent(null);
     }
@@ -2457,7 +2461,7 @@ export default function Dashboard() {
                           setAgentStatus("Template filled from STT transcript. Review and adjust as needed.");
                           createFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
                         } catch (err) {
-                          setAgentVoiceStatus("Error: " + (err instanceof Error ? err.message : "Failed"));
+                          setAgentVoiceStatus("Error: " + sanitizeProviderBranding(err instanceof Error ? err.message : "Failed"));
                         } finally {
                           setIsAgentVoiceGenerating(false);
                         }
@@ -2821,7 +2825,7 @@ export default function Dashboard() {
                                     setDialerCallStatus("Call initiated. Calling the number.");
                                     fetchCallLogs();
                                   } catch (err) {
-                                    setDialerCallStatus("Error: " + (err instanceof Error ? err.message : "Call failed"));
+                                    setDialerCallStatus("Error: " + sanitizeProviderBranding(err instanceof Error ? err.message : "Call failed"));
                                   } finally {
                                     setIsDialerCalling(false);
                                   }
@@ -2935,7 +2939,7 @@ export default function Dashboard() {
                       >
                         {voices.map((v) => (
                           <option key={v.voice_id} value={`vapi:${v.voice_id}`}>
-                            {v.name}
+                            {sanitizeProviderBranding(v.name)}
                           </option>
                         ))}
                       </select>
@@ -3433,7 +3437,7 @@ export default function Dashboard() {
                                 setDialerCallStatus("Call initiated.");
                                 fetchCallLogs();
                               } catch (err) {
-                                setDialerCallStatus("Error: " + (err instanceof Error ? err.message : "Call failed"));
+                                setDialerCallStatus("Error: " + sanitizeProviderBranding(err instanceof Error ? err.message : "Call failed"));
                               } finally {
                                 setIsDialerCalling(false);
                               }
@@ -3542,7 +3546,7 @@ export default function Dashboard() {
                                         setDialerCallStatus(`Calling ${entry.name}...`);
                                         fetchCallLogs();
                                       } catch (err) {
-                                        setDialerCallStatus("Error: " + (err instanceof Error ? err.message : "Call failed"));
+                                        setDialerCallStatus("Error: " + sanitizeProviderBranding(err instanceof Error ? err.message : "Call failed"));
                                       } finally {
                                         setIsDialerCalling(false);
                                       }
@@ -3661,7 +3665,7 @@ Jane Smith,+15559876543`}
                                     if (!res.ok) throw new Error(data?.error || "Call failed");
                                     results.push({ number: entry.number, name: entry.name, status: "Initiated" });
                                   } catch (err) {
-                                    results.push({ number: entry.number, name: entry.name, status: `Failed: ${err instanceof Error ? err.message : "Unknown"}` });
+                                    results.push({ number: entry.number, name: entry.name, status: `Failed: ${sanitizeProviderBranding(err instanceof Error ? err.message : "Unknown")}` });
                                   }
                                   setBulkDialResults([...results]);
                                   if (i < phonebookEntries.length - 1) {
