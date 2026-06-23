@@ -46,7 +46,9 @@ Copy these **exact** variable names into your Vercel project (Settings → Envir
 | --------- | ----------- |
 | `ORBIT_SECRET` | Alternative to `VAPI_PRIVATE_API_KEY` |
 | `PHONE_NUMBER_ID` | Alternative to `VAPI_PHONE_NUMBER_ID` |
-| `NEXT_PUBLIC_VAPI_ASSISTANT_IVAN_ID` | Default assistant ID for Create My Agent |
+| `NEXT_PUBLIC_DEFAULT_AGENT_ID` | Default assistant ID for web calls & create (overrides `NEXT_PUBLIC_VAPI_ASSISTANT_IVAN_ID`) |
+| `NEXT_PUBLIC_DEFAULT_AGENT_NAME` | Display name for the default assistant |
+| `NEXT_PUBLIC_VAPI_ASSISTANT_IVAN_ID` | Legacy fallback for default assistant ID |
 
 ---
 
@@ -69,6 +71,8 @@ OLLAMA_TIMEOUT_SECONDS
 OPENAI_API_KEY
 ORBIT_SECRET
 PHONE_NUMBER_ID
+NEXT_PUBLIC_DEFAULT_AGENT_ID
+NEXT_PUBLIC_DEFAULT_AGENT_NAME
 NEXT_PUBLIC_VAPI_ASSISTANT_IVAN_ID
 ELEVENLABS_API_KEY
 ECHO_PROVIDER_KEY

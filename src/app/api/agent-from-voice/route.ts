@@ -90,7 +90,7 @@ You are Ivan, Client Care Consultant and Technical Team Lead for Eburon AI. You'
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite-preview';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const IVAN_ID = process.env.NEXT_PUBLIC_VAPI_ASSISTANT_IVAN_ID;
+const IVAN_ID = process.env.NEXT_PUBLIC_DEFAULT_AGENT_ID || process.env.NEXT_PUBLIC_VAPI_ASSISTANT_IVAN_ID || '';
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL;
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'llama3.2';
 
