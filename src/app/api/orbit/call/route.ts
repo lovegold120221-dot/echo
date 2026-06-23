@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createOutboundCall, fetchAssistantById, orbitCoreRequest } from '@/lib/services/orbit';
 
 async function getOrCreatePhoneNumber(assistantId: string): Promise<string | null> {
-  // 1. Check assistant's phone number
+  // 1. Check assistant's phone number field directly
   try {
     const assistant = await fetchAssistantById(assistantId);
     const pn = (assistant as any)?.phoneNumberId || (assistant as any)?.phoneNumber?.id;
@@ -11,7 +11,18 @@ async function getOrCreatePhoneNumber(assistantId: string): Promise<string | nul
     // ignore
   }
 
-  // 2. Auto-provision a VAPI phone number
+  // 2. Search existing phone numbers for one assigned to this assistant
+  try {
+    const numbers = await orbitCoreRequest('GET', '/phone-number');
+    if (Array.isArray(numbers)) {
+      const match = numbers.find((n: any) => n.assistantId === assistantId && n.status === 'active');
+      if (match?.id) return match.id;
+    }
+  } catch {
+    // ignore
+  }
+
+  // 3. Auto-provision a VAPI phone number
   try {
     const result = await orbitCoreRequest('POST', '/phone-number', {
       provider: 'vonage',
