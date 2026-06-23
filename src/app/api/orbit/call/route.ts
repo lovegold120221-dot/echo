@@ -11,12 +11,20 @@ async function getOrCreatePhoneNumber(assistantId: string): Promise<string | nul
     // ignore
   }
 
-  // 2. Search existing phone numbers for one assigned to this assistant
+  // 2. Search existing phone numbers: first by assistant, then any active Twilio number
   try {
     const numbers = await orbitCoreRequest('GET', '/phone-number');
     if (Array.isArray(numbers)) {
-      const match = numbers.find((n: any) => n.assistantId === assistantId && n.status === 'active');
-      if (match?.id) return match.id;
+      const active = numbers.filter((n: any) => n.status === 'active');
+      // Prefer a number assigned to this assistant
+      const byAssistant = active.find((n: any) => n.assistantId === assistantId);
+      if (byAssistant?.id) return byAssistant.id;
+      // Fall back to any active Twilio number with an E.164 phone number
+      const anyTwilio = active.find((n: any) => n.provider === 'twilio' && n.number);
+      if (anyTwilio?.id) return anyTwilio.id;
+      // Fall back to any active number with a phone number
+      const anyNumber = active.find((n: any) => n.number);
+      if (anyNumber?.id) return anyNumber.id;
     }
   } catch {
     // ignore
