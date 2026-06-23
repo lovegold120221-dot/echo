@@ -36,6 +36,7 @@ import { TTS_MODEL_LABELS } from "@/lib/brand";
 import { enhanceTextForTTS, normalizeForTTS } from "@/lib/tts-enhancer";
 import { supabase } from "@/lib/supabase";
 import { User } from "@supabase/supabase-js";
+import Vapi from "@vapi-ai/web";
 
 // type Voice moved to echo.ts
 
@@ -213,6 +214,17 @@ export default function Dashboard() {
   const webCallRingAudioRef = useRef<HTMLAudioElement | null>(null);
   const pendingWebCallStartRef = useRef<symbol | null>(null);
 
+  // Vapi Web SDK instance — uses public key, handles mic + WebRTC automatically
+  const vapiRef = useRef<Vapi | null>(null);
+  const getVapi = useCallback((): Vapi | null => {
+    if (typeof window === "undefined") return null;
+    if (vapiRef.current) return vapiRef.current;
+    const token = process.env.NEXT_PUBLIC_ORBIT_TOKEN || "";
+    if (!token) return null;
+    vapiRef.current = new Vapi(token);
+    return vapiRef.current;
+  }, []);
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       setApiBaseUrl(window.location.origin);
@@ -270,6 +282,66 @@ export default function Dashboard() {
     } catch (error) {
       console.warn("Web call ring could not start:", error);
     }
+  }, []);
+
+  // Vapi Web SDK event listeners — transcript, call status, errors
+  useEffect(() => {
+    const vapi = getVapi();
+    if (!vapi) return;
+
+    const onCallStart = () => {
+      pendingWebCallStartRef.current = null;
+      stopWebCallRing();
+      setCallStatus("active");
+      setLiveInterimTranscript({ user: "", agent: "" });
+    };
+
+    const onCallEnd = () => {
+      resetWebCallUi();
+    };
+
+    const onError = (error: unknown) => {
+      console.error("Web call error:", error);
+      resetWebCallUi();
+    };
+
+    const onMessage = (message: { type: string; transcriptType?: string; transcript?: string; role?: string }) => {
+      if (message.type !== "transcript" || !message.transcript || !message.role) return;
+      const role = message.role === "user" ? "user" : "agent";
+      const text = message.transcript.trim();
+      if (!text) return;
+
+      const isInterim = message.transcriptType === "interim" || message.transcriptType === "partial";
+      if (isInterim) {
+        setLiveInterimTranscript((prev) => ({ ...prev, [role]: text }));
+        return;
+      }
+      setTranscript((prev) => {
+        const last = prev[prev.length - 1];
+        if (last && last.role === role && last.text === text) return prev;
+        return [...prev, { role, text }];
+      });
+      setLiveInterimTranscript((prev) => ({ ...prev, [role]: "" }));
+    };
+
+    vapi.on("call-start", onCallStart);
+    vapi.on("call-end", onCallEnd);
+    vapi.on("error", onError);
+    vapi.on("message", onMessage);
+
+    return () => {
+      vapi.off("call-start", onCallStart);
+      vapi.off("call-end", onCallEnd);
+      vapi.off("error", onError);
+      vapi.off("message", onMessage);
+    };
+  }, [getVapi, stopWebCallRing, resetWebCallUi]);
+
+  // Cleanup: stop any active call when component unmounts
+  useEffect(() => {
+    return () => {
+      vapiRef.current?.stop();
+    };
   }, []);
 
   const [models, setModels] = useState<{ model_id: string; name: string; languages: { language_id: string; name: string }[] }[]>([]);
@@ -440,10 +512,11 @@ export default function Dashboard() {
   }, [activeTab, fetchCallLogs]);
 
   const handleToggleCall = async (assistantId: string) => {
-    if (callStatus === "active") {
+    // If call is active, stop it
+    if (callStatus === "active" || callStatus === "loading") {
       pendingWebCallStartRef.current = null;
       stopWebCallRing();
-      // Stop any active call
+      vapiRef.current?.stop();
       setCallStatus("idle");
       setActiveAgentId("");
       setTranscript([]);
@@ -454,6 +527,12 @@ export default function Dashboard() {
     const idToUse = assistantId || selectedDialerAgentId || DEFAULT_AGENT_ID;
     if (!idToUse) {
       alert("No agent ID selected.");
+      return;
+    }
+
+    const vapi = getVapi();
+    if (!vapi) {
+      alert("Voice engine not configured. Set NEXT_PUBLIC_ORBIT_TOKEN in your environment.");
       return;
     }
 
@@ -470,37 +549,15 @@ export default function Dashboard() {
       await startWebCallRing();
       await new Promise((resolve) => window.setTimeout(resolve, WEB_CALL_PICKUP_DELAY_MS));
       if (pendingWebCallStartRef.current !== startToken) return;
+
       console.log("Starting web call for assistant:", idToUse);
-
-      // Use proxy endpoint to hide VAPI URL from browser
-      const res = await authedFetch("/api/orbit/web-call", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ assistantId: idToUse }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Unknown error" }));
-        throw new Error(err.error || `Web call failed (${res.status})`);
-      }
-
-      const data = await res.json();
-
-      // Handle web call connection
-      pendingWebCallStartRef.current = null;
-      stopWebCallRing();
-      setCallStatus("active");
-      setLiveInterimTranscript({ user: "", agent: "" });
-
-      // Store call data for later use
-      if (data.webCallUrl) {
-        // Connect to websocket if provided
-        console.log("Web call connected:", data.webCallUrl);
-      }
+      // Vapi SDK requests mic permission and connects via WebRTC
+      await vapi.start(idToUse);
     } catch (err) {
       console.error("Failed to start web call:", err);
       resetWebCallUi();
-      alert("Failed to connect to voice engine. Please check your internet connection or agent ID.");
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      alert(`Failed to connect to voice engine: ${msg}`);
     }
   };
 
@@ -2757,6 +2814,7 @@ export default function Dashboard() {
                                 className="dialer-end-call-btn"
                                 onClick={() => {
                                   // End call and reset UI
+                                  vapiRef.current?.stop();
                                   setCallStatus("idle");
                                   setActiveAgentId("");
                                   setTranscript([]);
@@ -3923,10 +3981,10 @@ Jane Smith,+15559876543`}
               <button
                 className="btn danger px-8 py-4 rounded-full"
                 onClick={() => {
-                  if (callStatus === "active") {
+                  if (callStatus === "active" || callStatus === "loading") {
                     pendingWebCallStartRef.current = null;
                     stopWebCallRing();
-                    // End call and reset UI
+                    vapiRef.current?.stop();
                     setCallStatus("idle");
                     setActiveAgentId("");
                     setTranscript([]);
