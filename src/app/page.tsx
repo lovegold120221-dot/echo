@@ -297,11 +297,12 @@ export default function Dashboard() {
     };
 
     const onCallEnd = () => {
+      console.log("[vapi] call-end event received");
       resetWebCallUi();
     };
 
     const onError = (error: unknown) => {
-      console.error("Web call error:", error);
+      console.error("[vapi] error event:", error);
       resetWebCallUi();
     };
 
@@ -549,6 +550,10 @@ export default function Dashboard() {
       await startWebCallRing();
       await new Promise((resolve) => window.setTimeout(resolve, WEB_CALL_PICKUP_DELAY_MS));
       if (pendingWebCallStartRef.current !== startToken) return;
+
+      // Stop the ring BEFORE connecting — otherwise the mic picks up
+      // the ring sound and VAPI hears noise instead of the user's voice
+      stopWebCallRing();
 
       console.log("Starting web call for assistant:", idToUse);
       // Vapi SDK requests mic permission and connects via WebRTC
